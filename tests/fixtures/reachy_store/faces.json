@@ -1,0 +1,23 @@
+{
+  "8nr9": {
+    "name": "Alice Example",
+    "created": 1753300000.0,
+    "embedding_files": [
+      "8nr9.npy"
+    ]
+  },
+  "c5xc": {
+    "name": "Bob Example",
+    "created": 1753300060.0,
+    "embedding_files": [
+      "c5xc.npy"
+    ]
+  },
+  "bz8c": {
+    "name": "Carol Example",
+    "created": 1753300120.0,
+    "embedding_files": [
+      "bz8c.npy"
+    ]
+  }
+}
