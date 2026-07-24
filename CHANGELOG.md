@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/). This project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-24
+
+### Added
+
+- FaceEngine (engine.py): the YuNet+SFace engine extracted from reachy-mini-cli — lazy cv2 import, model-zoo download with .part-then-rename and size sanity floors, synchronous largest-face detect(); byte-identical model URLs/filenames preserve the embedding space, plus an opportunistic (fully guarded) cv2 CUDA DNN backend on the detector only
+- FaceStore (store.py): the ported two-tier embedding store — cosine matching, faces.json + one .npy per embedding (byte-compatible with reachy-written stores, proven by a reachy-authored fixture), secrets-generated 4-char ids, write-then-replace saves, corrupt-index degrade, base_dir=/clock=/now= determinism seams
+- Per-consumer face banks (state.py): $FACE_RECOGNITION_STATE_DIR → $XDG_STATE_HOME/face-recognition-cli → ~/.local/state/face-recognition-cli, with banks/<name>/ per consumer, $FACE_RECOGNITION_BANK / --bank selection, and a bank-independent shared models/ directory
+- CLI verbs: enroll, match, list, forget, and forget-all (dry-run by default, --apply commits, per-bank scoped) — every verb takes --json and --bank; enroll/match take --image <path> or - for stdin bytes
+- build_face_recognition(*, models_dir=None, store_base_dir=None) public API (api.py, re-exported at the package root): probe-first, lazy-import, returns (engine, store) or None with one process-wide warning — the call shape reachy-mini-cli already uses
+- [cpu] and [gpu] extras (both opencv-python-headless over the same ONNX models — same embedding space) and numpy as the single base dependency
+- explain catalog entries for the five verbs plus a banks concept entry; a skippable end-to-end enroll→match roundtrip test; a reachy-store compatibility fixture
+
+### Changed
+
+- README rewritten to the shipped surface, including a Privacy & consent section (local-only storage, sole network path = one-time model download, one-verb deletion)
+- CLAUDE.md realigned: domain work moved from planned to landed, the five open questions recorded as decisions
+- CLI parser/learn/overview self-descriptions updated from the template wording to face identity
+
 ## [0.7.0] - 2026-07-24
 
 ### Added
