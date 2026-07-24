@@ -7,7 +7,7 @@ and an unmatched face is never enrolled as a side effect.
 
 **A no-match is a result, not an error.** "I do not recognise this person" is
 the correct, expected answer for any face that was never enrolled, so it exits
-0 and reports ``no match`` / ``{"match": null}``. Reserving non-zero for
+0 and reports ``no match`` / ``{"bank": ..., "match": null}``. Reserving non-zero for
 genuine failures (unreadable image, no face in the frame, missing extra) keeps
 ``match`` usable in a shell conditional without a stderr dance.
 
@@ -24,7 +24,7 @@ from face_recognition_cli.cli._commands._frames import load_frame
 from face_recognition_cli.cli._errors import EXIT_USER_ERROR, CliError
 from face_recognition_cli.cli._output import emit_result
 from face_recognition_cli.engine import FaceEngine
-from face_recognition_cli.state import bank_dir
+from face_recognition_cli.state import bank_dir, resolve_bank
 from face_recognition_cli.store import FaceStore
 
 _NO_FACE_HINT = (
@@ -45,17 +45,24 @@ def cmd_match(args: argparse.Namespace) -> None:
             remediation=_NO_FACE_HINT,
         )
 
+    bank = resolve_bank(args.bank)
     store = FaceStore(base_dir=bank_dir(args.bank))
     # threshold=None hands the decision to the store's own default (0.5).
     hit = store.match(detection.embedding, threshold=args.threshold)
 
+    # The bank is reported in JSON on BOTH branches — a null match is only
+    # meaningful next to the bank it was searched against, and the sibling
+    # store verbs (enroll/list/forget/forget-all) all carry the same key.
     if hit is None:
-        emit_result({"match": None} if json_mode else "no match", json_mode=json_mode)
+        emit_result({"bank": bank, "match": None} if json_mode else "no match", json_mode=json_mode)
         return
 
     if json_mode:
         emit_result(
-            {"match": {"face_id": hit.face_id, "name": hit.name, "score": hit.score}},
+            {
+                "bank": bank,
+                "match": {"face_id": hit.face_id, "name": hit.name, "score": hit.score},
+            },
             json_mode=True,
         )
         return

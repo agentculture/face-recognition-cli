@@ -516,7 +516,8 @@ class TestMatch:
 
         assert rc is None  # None => exit 0 via _dispatch
         payload = json.loads(capsys.readouterr().out)
-        assert set(payload) == {"match"}
+        assert set(payload) == {"bank", "match"}
+        assert payload["bank"] == "default"
         assert set(payload["match"]) == {"face_id", "name", "score"}
         assert payload["match"]["face_id"] == face_id
         assert payload["match"]["name"] == "ada"
@@ -546,7 +547,7 @@ class TestMatch:
 
         assert rc is None
         out = capsys.readouterr()
-        assert json.loads(out.out) == {"match": None}
+        assert json.loads(out.out) == {"bank": "default", "match": None}
         assert out.err == ""
 
     def test_a_no_match_prints_no_match_in_text_mode(
@@ -569,7 +570,7 @@ class TestMatch:
         rc = _run(["match", "--image", str(_write_image(tmp_path)), "--json"])
 
         assert rc is None
-        assert json.loads(capsys.readouterr().out) == {"match": None}
+        assert json.loads(capsys.readouterr().out) == {"bank": "default", "match": None}
 
     def test_threshold_override_can_reject_a_default_hit(
         self, fake_cv2, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
@@ -584,7 +585,7 @@ class TestMatch:
 
         # ... but not an explicit 0.9.
         _run(["match", "--image", image, "--threshold", "0.9", "--json"])
-        assert json.loads(capsys.readouterr().out) == {"match": None}
+        assert json.loads(capsys.readouterr().out) == {"bank": "default", "match": None}
 
     def test_threshold_override_can_accept_a_default_miss(
         self, fake_cv2, monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
@@ -594,7 +595,7 @@ class TestMatch:
         image = str(_write_image(tmp_path))
 
         _run(["match", "--image", image, "--json"])
-        assert json.loads(capsys.readouterr().out) == {"match": None}
+        assert json.loads(capsys.readouterr().out) == {"bank": "default", "match": None}
 
         _run(["match", "--image", image, "--threshold", "0.2", "--json"])
         assert json.loads(capsys.readouterr().out)["match"]["name"] == "ada"
@@ -606,7 +607,7 @@ class TestMatch:
         _patch_detect(monkeypatch, _detection(_unit(0)))
 
         _run(["match", "--image", str(_write_image(tmp_path)), "--bank", "beta", "--json"])
-        assert json.loads(capsys.readouterr().out) == {"match": None}
+        assert json.loads(capsys.readouterr().out) == {"bank": "beta", "match": None}
 
         _run(["match", "--image", str(_write_image(tmp_path)), "--bank", "alpha", "--json"])
         assert json.loads(capsys.readouterr().out)["match"]["name"] == "ada"
