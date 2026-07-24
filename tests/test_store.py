@@ -676,9 +676,10 @@ class TestEnrollPersistenceHonesty:
         store = FaceStore(base_dir=base)
         store.load()
         monkeypatch.setattr(store, "save", lambda: False)
+        embedding = _embedding(12)
 
         with pytest.raises(OSError):
-            store.enroll("Alice", _embedding(12))
+            store.enroll("Alice", embedding)
 
         assert store.permanent_count == 0  # in-memory record rolled back
         assert list((base / "embeddings").glob("*.npy")) == []  # orphan removed

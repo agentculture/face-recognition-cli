@@ -341,6 +341,24 @@ class FaceStore:
         best_name: str | None = None
         best_score = -1.0
 
+        for face_id, name, stored in self._iter_stored_embeddings():
+            score = cosine_similarity(query, stored)
+            if score > best_score:
+                best_score = score
+                best_id = face_id
+                best_name = name
+
+        if best_id is not None and best_score >= threshold:
+            return FaceMatch(face_id=best_id, name=best_name, score=best_score)
+        return None
+
+    def _iter_stored_embeddings(self):
+        """Yield ``(face_id, name, embedding)`` for every loadable stored embedding.
+
+        Unsafe ``embedding_files`` entries (see :meth:`_safe_embedding_path`),
+        missing files and unloadable ``.npy`` payloads are skipped with the
+        same degrade-and-continue posture the rest of the load path uses.
+        """
         for face_id, data in self._permanent.items():
             for emb_file in data.get("embedding_files", []):
                 path = self._safe_embedding_path(emb_file)
@@ -351,15 +369,7 @@ class FaceStore:
                 except (OSError, ValueError) as exc:
                     logger.warning("failed to load embedding %s: %s", path, exc)
                     continue
-                score = cosine_similarity(query, stored)
-                if score > best_score:
-                    best_score = score
-                    best_id = face_id
-                    best_name = data.get("name")
-
-        if best_id is not None and best_score >= threshold:
-            return FaceMatch(face_id=best_id, name=best_name, score=best_score)
-        return None
+                yield face_id, data.get("name"), stored
 
     def forget(self, face_id: str) -> bool:
         """Delete a permanent face record and its embedding files. Returns success."""
