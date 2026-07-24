@@ -83,9 +83,22 @@ the same. The checked-in reality is `colleague`, inherited verbatim from the
 template. The brief asks you to *reconcile `culture.yaml` against the backend
 you actually run*. That reconciliation has **not** been done.
 
-The mesh evidence points at `claude`: `devague`'s `CLAUDE.md` calls it "the
-mesh standard", and of the siblings in this workspace only `steward` (and this
-repo, via the template) declares `colleague` — `guildmaster`, `devague`,
+**It is already breaking a tool.** `devex pr reply` rejects the declaration
+outright:
+
+```text
+devex: culture.yaml agent 'face-recognition-cli' has unknown backend 'colleague'
+hint: expected one of claude (= claude-code), codex, copilot, acp
+```
+
+So the `cicd` skill's reply lane only works with an explicit
+`--agent claude-code` override (`devex pr reply <PR> --agent claude-code`).
+`lint` / `open` / `read` / `status` / `await` are unaffected — they don't
+resolve the backend.
+
+The mesh evidence points the same way: `devague`'s `CLAUDE.md` calls `claude`
+"the mesh standard", and of the siblings in this workspace only `steward` (and
+this repo, via the template) declares `colleague` — `guildmaster`, `devague`,
 `colleague`, and `reachy-mini-cli` all declare `claude`. If you flip it, three
 things move together or `doctor` and CI break:
 

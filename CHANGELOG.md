@@ -68,7 +68,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `backend == "colleague"` assertions. Records the mesh evidence gathered from
   `devex pr delta`: `devague`'s `CLAUDE.md` calls `claude` "the mesh standard",
   and of the siblings in this workspace only `steward` (and this repo, via the
-  template) declares `colleague`.
+  template) declares `colleague`. Also records that the mismatch is already
+  breaking a tool — `devex pr reply` rejects `backend: colleague` outright
+  (`unknown backend`, expecting one of `claude`/`codex`/`copilot`/`acp`), so
+  the `cicd` skill's reply lane needs an explicit `--agent claude-code`
+  override until the declaration is reconciled.
 
 ## [0.6.1] - 2026-07-20
 
