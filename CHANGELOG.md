@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/). This project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-24
+
+### Added
+
+- **`CLAUDE.md` is now a real runtime prompt** — the `/init` pass replaced the
+  bootstrap seed. Grounded in the build brief
+  ([#1](https://github.com/agentculture/face-recognition-cli/issues/1)) and the
+  sibling `reachy-mini-cli` checkout, it documents: the agent-first CLI
+  contract (verb registration, the `parser_class=type(p)` rule for noun groups,
+  the `CliError` / `hint:` / exit-code policy, the stdout-vs-stderr split, the
+  `explain` catalog gotcha); the deliberate naming split (console script
+  `face-recognition`, import package `face_recognition_cli` — never
+  `face_recognition`, which would shadow the unrelated dlib distribution on
+  PyPI); the planned domain work (the YuNet+SFace `FaceEngine` and `FaceStore`
+  to extract, their contracts and test seams, the dry-run-by-default
+  `forget-all`, the `build_face_recognition` API `reachy-mini-cli` consumes);
+  the `[cpu]` / `[gpu]` compute-class split and its non-negotiable
+  same-embedding-space invariant; the five open design questions from the
+  brief; the migration protocol for `reachy-mini-cli` (open an issue, publish
+  first, never push into that repo); and CI/release, skills, and workflow
+  conventions. Planned work is marked as planned throughout — no
+  face-recognition code is checked in yet.
+- **Worktree, memory, and `ask-colleague` conventions restored** into
+  `CLAUDE.md`. `CHANGELOG.md` 0.6.1 documented a worktree-location convention
+  that lived in the template's `CLAUDE.md` and was lost when the scaffold
+  replaced that file with the seed; it is back, repo-named as
+  `../.worktrees.face-recognition-cli/<name>/`. The memory-discipline note is
+  written against the *vendored scripts'* actual behaviour (default
+  `--visibility public` → the in-repo `<repo-root>/.eidetic/memory`), which
+  differs from the description text in the skills' own frontmatter.
+- **A Privacy section in `README.md`** — the build brief asks for the biometric
+  stance to be written down, since this repo is public and the tool stores
+  identifiers of real people. States the design commitments: everything stays
+  on the machine, the only network access is the one-time OpenCV model-zoo
+  download, deletion is a first-class verb (`forget` / `forget-all`), and what
+  is stored is a 128-dim embedding rather than a photograph.
+- **A Roadmap section in `README.md`** listing the planned `enroll` / `match` /
+  `list` / `forget` / `forget-all` verbs (with `forget-all` documented as
+  dry-run-by-default, `--apply` to commit) and the `[cpu]` / `[gpu]` extras
+  with their same-embedding-space guarantee — kept separate from the verb table
+  of what actually runs today.
+
+### Changed
+
+- **`README.md` rewritten** from the `culture-agent-template` boilerplate into
+  an agent-specific readme. The template's "Make it your own" cloning
+  instructions are gone (this repo has already been cloned and renamed),
+  replaced by a status banner that marks the repo as scaffold-only, the
+  install/extras table, the current CLI surface, and the roadmap.
+
+### Fixed
+
+- **Recorded the `culture.yaml` backend mismatch** rather than leaving it to be
+  rediscovered. The build brief lists the backend as `claude` "as scaffolded"
+  and the old seed `CLAUDE.md` repeated that, but the checked-in reality is
+  `backend: colleague` with `AGENTS.colleague.md` on disk, inherited verbatim
+  from the template. The reconciliation the brief asks for is still open;
+  `CLAUDE.md` now names the three things that move together, including that
+  `doctor` would still pass (`_PROMPT_FILE` maps `claude` → `CLAUDE.md`, which
+  exists) while `test_whoami_text` / `test_whoami_json` would fail on their
+  `backend == "colleague"` assertions. Records the mesh evidence gathered from
+  `devex pr delta`: `devague`'s `CLAUDE.md` calls `claude` "the mesh standard",
+  and of the siblings in this workspace only `steward` (and this repo, via the
+  template) declares `colleague`.
+
 ## [0.6.1] - 2026-07-20
 
 ### Added

@@ -1,6 +1,6 @@
 [project]
 name = "face-recognition-cli"
-version = "0.6.1"
+version = "0.7.0"
 description = "Face recognition and identity management: detect faces, collect embeddings per identity, and manage them by generated id and human name — enroll, match, list, forget one, and forget all at once. Extracted from reachy-mini-cli's OpenCV YuNet+SFace engine so Reachy Mini depends on it instead of carrying its own copy."
 readme = "README.md"
 license = "Apache-2.0"
