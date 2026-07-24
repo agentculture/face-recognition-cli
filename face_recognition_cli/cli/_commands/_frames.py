@@ -44,6 +44,17 @@ from face_recognition_cli.engine import _import_cv2
 #: The ``--image`` value that means "read encoded bytes from stdin".
 STDIN_SENTINEL = "-"
 
+#: Refuse image payloads beyond this many bytes, from stdin or a file. Real
+#: encoded stills are megabytes at most; the cap exists so a runaway producer
+#: piped into ``--image -`` (or a mistakenly named huge file) fails fast with
+#: a clean error instead of exhausting memory. Generous by design.
+MAX_IMAGE_BYTES = 64 * 1024 * 1024
+
+_TOO_LARGE_HINT = (
+    "the input exceeds the 64 MiB image limit; pass a single encoded still, "
+    "not a stream or an unrelated large file"
+)
+
 _SUPPORTED = "png, jpeg, bmp, webp — anything the local OpenCV build decodes"
 
 _STDIN_HINT = f"pipe an encoded image ({_SUPPORTED}) on stdin, or pass --image <path>"
@@ -60,19 +71,33 @@ def _read_stdin_bytes() -> bytes:
             remediation=_STDIN_HINT,
         )
     try:
-        return buffer.read()
+        data = buffer.read(MAX_IMAGE_BYTES + 1)
     except OSError as err:
         raise CliError(
             code=EXIT_USER_ERROR,
             message="could not read image bytes from stdin",
             remediation=_STDIN_HINT,
         ) from err
+    if len(data) > MAX_IMAGE_BYTES:
+        raise CliError(
+            code=EXIT_USER_ERROR,
+            message="image data on stdin is too large",
+            remediation=_TOO_LARGE_HINT,
+        )
+    return data
 
 
 def _read_file_bytes(image: str) -> bytes:
     """Read an encoded image file whole; a bad path is a user error."""
+    path = Path(image)
     try:
-        return Path(image).read_bytes()
+        if path.stat().st_size > MAX_IMAGE_BYTES:
+            raise CliError(
+                code=EXIT_USER_ERROR,
+                message=f"image file is too large: {image}",
+                remediation=_TOO_LARGE_HINT,
+            )
+        return path.read_bytes()
     except OSError as err:
         raise CliError(
             code=EXIT_USER_ERROR,

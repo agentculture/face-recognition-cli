@@ -337,7 +337,7 @@ class TestFrameLoading:
         self, fake_cv2, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class _Boom:
-            def read(self) -> bytes:
+            def read(self, size: int = -1) -> bytes:
                 raise OSError("reading from stdin while output is captured")
 
         monkeypatch.setattr(sys, "stdin", types.SimpleNamespace(buffer=_Boom()))
@@ -669,3 +669,71 @@ class TestMatch:
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert excinfo.value.message == "no face detected in the image"
+
+
+# ---------------------------------------------------------------------------
+# PR #3 review hardenings — input size cap + persistence failure surface
+# ---------------------------------------------------------------------------
+
+
+class TestImageSizeCap:
+    """A runaway stdin producer or a huge file fails fast, never OOMs."""
+
+    def test_oversized_stdin_is_a_clean_user_error(
+        self, fake_cv2, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_frames, "MAX_IMAGE_BYTES", 64)
+        _feed_stdin(monkeypatch, b"x" * 100)
+
+        with pytest.raises(CliError) as excinfo:
+            _frames.load_frame("-")
+
+        assert excinfo.value.code == EXIT_USER_ERROR
+        assert "too large" in excinfo.value.message
+
+    def test_oversized_file_is_a_clean_user_error(
+        self, fake_cv2, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_frames, "MAX_IMAGE_BYTES", 64)
+        big = tmp_path / "big.png"
+        big.write_bytes(b"x" * 100)
+        path = str(big)
+
+        with pytest.raises(CliError) as excinfo:
+            _frames.load_frame(path)
+
+        assert excinfo.value.code == EXIT_USER_ERROR
+        assert "too large" in excinfo.value.message
+
+    def test_payloads_under_the_cap_still_decode(
+        self, fake_cv2, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _feed_stdin(monkeypatch, _image_bytes())
+        frame = _frames.load_frame("-")
+        assert frame is not None
+
+    def test_the_default_cap_is_generous(self) -> None:
+        """64 MiB — far above any real encoded still, small enough to matter."""
+        assert _frames.MAX_IMAGE_BYTES == 64 * 1024 * 1024
+
+
+class TestEnrollPersistenceFailureSurface:
+    """A store persistence failure surfaces as exit 2, not a fake success."""
+
+    def test_enroll_reports_exit2_when_the_store_cannot_persist(
+        self, fake_cv2, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_detect(monkeypatch, _detection(_unit(0)))
+
+        def _failing_enroll(self, name, embedding, *, now=None):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("face_recognition_cli.store.FaceStore.enroll", _failing_enroll)
+
+        argv = ["enroll", "--name", "ada", "--image", str(_write_image(tmp_path))]
+        with pytest.raises(CliError) as excinfo:
+            _run(argv)
+
+        assert excinfo.value.code == 2
+        assert "persist" in excinfo.value.message
+        assert "permissions" in excinfo.value.remediation

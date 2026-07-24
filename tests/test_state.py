@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from face_recognition_cli import state
+from face_recognition_cli.cli._errors import CliError
 
 
 def _clear_state_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,3 +180,49 @@ def test_state_dir_env_var_name_is_exact(monkeypatch: pytest.MonkeyPatch, tmp_pa
     """Sanity check the exact env var name so a typo can't silently pass other tests."""
     monkeypatch.setenv("FACE_RECOGNITION_STATE_DIR", str(tmp_path / "exact-name-check"))
     assert state.state_dir() == tmp_path / "exact-name-check"
+
+
+# ---------------------------------------------------------------------------
+# Bank-name validation — a bank is a single path segment, never a traversal
+# ---------------------------------------------------------------------------
+
+
+class TestBankNameValidation:
+    """PR #3 review: --bank / $FACE_RECOGNITION_BANK must not traverse paths."""
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["..", "../other", "a/b", "a\\b", "/abs", ".hidden", "-dash-led", "a b", "c:evil"],
+    )
+    def test_traversal_and_malformed_names_are_a_clean_user_error(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, bad: str
+    ) -> None:
+        monkeypatch.setenv("FACE_RECOGNITION_STATE_DIR", str(tmp_path))
+        with pytest.raises(CliError) as excinfo:
+            state.resolve_bank(bad)
+        assert excinfo.value.code == 1
+        assert "bank name" in excinfo.value.message
+
+    def test_the_env_source_is_validated_too(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        monkeypatch.setenv("FACE_RECOGNITION_STATE_DIR", str(tmp_path))
+        monkeypatch.setenv("FACE_RECOGNITION_BANK", "../escape")
+        with pytest.raises(CliError):
+            state.resolve_bank()
+
+    @pytest.mark.parametrize("good", ["default", "reachy", "colleague", "a.b-c_2", "X9"])
+    def test_ordinary_names_pass_through(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path, good: str
+    ) -> None:
+        monkeypatch.setenv("FACE_RECOGNITION_STATE_DIR", str(tmp_path))
+        assert state.resolve_bank(good) == good
+        bank = state.bank_dir(good)
+        assert bank.parent == tmp_path / "banks"
+
+    def test_bank_dir_cannot_escape_the_banks_tree(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        monkeypatch.setenv("FACE_RECOGNITION_STATE_DIR", str(tmp_path))
+        with pytest.raises(CliError):
+            state.bank_dir("../../outside")

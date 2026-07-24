@@ -47,13 +47,17 @@ Deviations inherited from the reachy port (relative to nova), kept verbatim:
   call site). ``save`` is write-then-replace, so a crash mid-write cannot
   truncate a good index.
 
-Two hardenings tighten that never-raises contract past what reachy shipped,
-without changing any format or behaviour on a healthy store: ``load`` also
-catches ``UnicodeDecodeError`` (reachy's version raises on an index that is not
-valid UTF-8 — non-text garbage bytes, not just malformed JSON), and ``save``
-brings its ``mkdir`` inside the ``try`` (so an unwritable parent is logged like
-every other persistence failure instead of propagating). Both are failure-path
-only.
+Four hardenings tighten that contract past what reachy shipped, without
+changing any format or behaviour on a healthy store — all failure-path only:
+``load`` also catches ``UnicodeDecodeError`` (reachy's version raises on an
+index that is not valid UTF-8 — non-text garbage bytes, not just malformed
+JSON); ``save`` brings its ``mkdir`` inside the ``try`` (so an unwritable
+parent is logged like every other persistence failure instead of propagating)
+and returns a success boolean; ``enroll`` rolls back and raises ``OSError``
+when that save fails (a record that never reached disk must not report
+success); and ``embedding_files`` entries read from ``faces.json`` are
+confined to the embeddings directory (:meth:`FaceStore._safe_embedding_path`)
+so a tampered index cannot point ``np.load``/``unlink`` outside it.
 
 The temporary tier is ported **as-is even though no caller uses it yet** —
 reachy never called it either. It is the enrolment half of a "who are you?"
@@ -223,8 +227,15 @@ class FaceStore:
         if not self._loaded:
             self.load()
 
-    def save(self) -> None:
-        """Persist the permanent-tier index to disk (write-then-replace)."""
+    def save(self) -> bool:
+        """Persist the permanent-tier index to disk (write-then-replace).
+
+        Returns ``True`` when the index landed on disk and ``False`` on a
+        persistence failure (logged, never raises — the never-raises contract
+        stays; the boolean lets callers that *must* know, like
+        :meth:`enroll`, detect the failure instead of silently reporting
+        success).
+        """
         try:
             self._base_dir.mkdir(parents=True, exist_ok=True)
             tmp_path = self._index_path.with_name(self._index_path.name + ".tmp")
@@ -232,6 +243,23 @@ class FaceStore:
             tmp_path.replace(self._index_path)
         except OSError as exc:
             logger.warning("failed to save face index at %s: %s", self._index_path, exc)
+            return False
+        return True
+
+    def _safe_embedding_path(self, emb_file: object) -> Path | None:
+        """Resolve an ``embedding_files`` entry under the embeddings dir, or ``None``.
+
+        The entries are *data* read from ``faces.json``; a tampered or corrupt
+        index must not be able to point reads (:func:`numpy.load` in
+        :meth:`match`) or deletes (``unlink`` in :meth:`forget`) outside the
+        embeddings directory. Anything that is not a bare filename is skipped
+        with a warning, mirroring how every other corrupt-index shape degrades.
+        """
+        name = str(emb_file)
+        if not name or name in (".", "..") or name != Path(name).name:
+            logger.warning("ignoring unsafe embedding_files entry %r", emb_file)
+            return None
+        return self._embeddings_dir / name
 
     # ------------------------------------------------------------------
     # Temporary tier
@@ -286,7 +314,15 @@ class FaceStore:
             "created": now,
             "embedding_files": [emb_file],
         }
-        self.save()
+        if not self.save():
+            # A record that never reached disk must not report success: it
+            # would vanish on the next process. Roll back both halves of the
+            # write so the store stays consistent, then surface the failure.
+            self._permanent.pop(face_id, None)
+            emb_path = self._embeddings_dir / emb_file
+            if emb_path.exists():
+                emb_path.unlink()
+            raise OSError(f"could not persist the face index at {self._index_path}")
         return face_id
 
     def match(self, embedding: np.ndarray, *, threshold: float | None = None) -> FaceMatch | None:
@@ -307,8 +343,8 @@ class FaceStore:
 
         for face_id, data in self._permanent.items():
             for emb_file in data.get("embedding_files", []):
-                path = self._embeddings_dir / emb_file
-                if not path.exists():
+                path = self._safe_embedding_path(emb_file)
+                if path is None or not path.exists():
                     continue
                 try:
                     stored = np.load(path)
@@ -332,8 +368,8 @@ class FaceStore:
         if data is None:
             return False
         for emb_file in data.get("embedding_files", []):
-            path = self._embeddings_dir / emb_file
-            if path.exists():
+            path = self._safe_embedding_path(emb_file)
+            if path is not None and path.exists():
                 path.unlink()
         self.save()
         return True

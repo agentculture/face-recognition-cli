@@ -50,6 +50,8 @@ Two things are new here, neither of which touches the embedding space:
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -144,17 +146,21 @@ def _download(url: str, dest: Path, *, timeout: float = 30.0) -> None:
 def _ensure_model(filename: str, url: str, *, min_bytes: int, models_dir: Path) -> Path:
     """Download *filename* from *url* into *models_dir* if not already present.
 
-    Downloads to a ``.part`` sibling first and only renames it into place once
-    the transfer completes AND clears the ``min_bytes`` sanity floor, so a
-    partial/failed/corrupt download can never masquerade as a usable model
-    file on a later call.
+    Downloads to a ``.part.*`` sibling first and only renames it into place
+    once the transfer completes AND clears the ``min_bytes`` sanity floor, so
+    a partial/failed/corrupt download can never masquerade as a usable model
+    file on a later call. The staging name carries a per-process unique
+    suffix so concurrent downloaders (two CLI invocations racing on a fresh
+    state dir) cannot truncate or interleave each other's temp file; the
+    atomic ``replace`` publish means the last completed download wins, and
+    every winner is the same bytes.
     """
     path = models_dir / filename
     if path.exists():
         return path
 
     models_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = models_dir / f"{filename}.part"
+    tmp_path = models_dir / f"{filename}.part.{os.getpid()}-{secrets.token_hex(4)}"
     logger.info("downloading %s ...", filename)
     try:
         _download(url, tmp_path)
@@ -165,7 +171,7 @@ def _ensure_model(filename: str, url: str, *, min_bytes: int, models_dir: Path) 
                 message=f"downloaded {filename} looks truncated ({size} bytes)",
                 remediation="check network connectivity and retry",
             )
-        tmp_path.rename(path)
+        tmp_path.replace(path)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()

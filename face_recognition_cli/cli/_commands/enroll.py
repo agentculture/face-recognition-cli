@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 
 from face_recognition_cli.cli._commands._frames import load_frame
-from face_recognition_cli.cli._errors import EXIT_USER_ERROR, CliError
+from face_recognition_cli.cli._errors import EXIT_ENV_ERROR, EXIT_USER_ERROR, CliError
 from face_recognition_cli.cli._output import emit_result
 from face_recognition_cli.engine import FaceEngine
 from face_recognition_cli.state import bank_dir, resolve_bank
@@ -48,7 +48,15 @@ def cmd_enroll(args: argparse.Namespace) -> None:
 
     bank = resolve_bank(args.bank)
     store = FaceStore(base_dir=bank_dir(args.bank))
-    face_id = store.enroll(args.name, detection.embedding)
+    try:
+        face_id = store.enroll(args.name, detection.embedding)
+    except OSError as err:
+        # The store rolled the record back; nothing was persisted.
+        raise CliError(
+            code=EXIT_ENV_ERROR,
+            message="could not persist the enrollment",
+            remediation=f"check disk space and permissions under {store.base_dir}",
+        ) from err
 
     # Read the count back off the record rather than hard-coding 1: a fresh
     # enrolment writes exactly one embedding today, and this stays honest if

@@ -50,7 +50,16 @@ tool already know the other):
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
+
+from face_recognition_cli.cli._errors import EXIT_USER_ERROR, CliError
+
+#: The shape a bank name must take. Bank names become path segments under
+#: ``<state dir>/banks/``, so anything that could traverse out of that tree
+#: (separators, ``..``, absolute paths, drive prefixes) is rejected outright —
+#: the leading alphanumeric also rules out dot-led names like ``..``.
+_BANK_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 #: The bank name used when no explicit bank is requested and no
 #: ``$FACE_RECOGNITION_BANK`` override is set.
@@ -83,17 +92,39 @@ def state_dir() -> Path:
     return base
 
 
+def _validate_bank_name(name: str) -> str:
+    """Return *name* if it is a safe bank name; raise a clean user error if not.
+
+    A bank name is a single path segment under ``banks/`` — validating the
+    shape here (rather than resolving-and-containing later) is what keeps
+    :func:`bank_dir` unable to escape the state tree.
+    """
+    if not _BANK_NAME_RE.fullmatch(name):
+        raise CliError(
+            code=EXIT_USER_ERROR,
+            message=f"invalid bank name: {name!r}",
+            remediation=(
+                "bank names are single path segments: letters, digits, '.', '_' or '-', "
+                "starting with a letter or digit (no separators, no '..')"
+            ),
+        )
+    return name
+
+
 def resolve_bank(name: str | None = None) -> str:
     """Resolve which bank to use.
 
     Precedence: an explicit ``name`` argument wins; otherwise
-    ``$FACE_RECOGNITION_BANK``; otherwise :data:`DEFAULT_BANK`.
+    ``$FACE_RECOGNITION_BANK``; otherwise :data:`DEFAULT_BANK`. Whichever
+    source supplied the name, it is validated — a bank name is a path segment
+    under ``banks/``, so traversal shapes are a clean exit-1 error, never a
+    path.
     """
     if name:
-        return name
+        return _validate_bank_name(name)
     env = os.environ.get(_BANK_ENV)
     if env:
-        return env
+        return _validate_bank_name(env)
     return DEFAULT_BANK
 
 

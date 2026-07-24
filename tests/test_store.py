@@ -598,3 +598,87 @@ class TestDefaultBaseDir:
         assert alice_bank.match(emb) is not None
         assert bob_bank.match(emb) is None
         assert bob_bank.list_faces() == []
+
+
+# ---------------------------------------------------------------------------
+# PR #3 review hardenings — traversal containment + persistence honesty
+# ---------------------------------------------------------------------------
+
+
+class TestEmbeddingPathContainment:
+    """``embedding_files`` entries are data; they must stay in embeddings/."""
+
+    def _store_with_crafted_index(self, base: Path, emb_file: str) -> FaceStore:
+        base.mkdir(parents=True, exist_ok=True)
+        (base / "faces.json").write_text(
+            json.dumps(
+                {"ab12": {"name": "mallory", "created": 1.0, "embedding_files": [emb_file]}}
+            ),
+            encoding="utf-8",
+        )
+        return FaceStore(base_dir=base)
+
+    def test_match_skips_traversal_entries(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside.npy"
+        np.save(outside, _embedding(7))
+        store = self._store_with_crafted_index(tmp_path / "bank", "../../outside.npy")
+
+        assert store.match(_embedding(7)) is None  # never np.load()ed from outside
+
+    def test_forget_never_unlinks_outside_the_embeddings_dir(self, tmp_path: Path) -> None:
+        outside = tmp_path / "precious.npy"
+        np.save(outside, _embedding(8))
+        store = self._store_with_crafted_index(tmp_path / "bank", "../../precious.npy")
+
+        assert store.forget("ab12") is True  # the record itself is removed
+        assert outside.exists()  # the decoy outside the bank survives
+
+    def test_absolute_paths_are_skipped_too(self, tmp_path: Path) -> None:
+        outside = tmp_path / "abs.npy"
+        np.save(outside, _embedding(9))
+        store = self._store_with_crafted_index(tmp_path / "bank", str(outside))
+
+        assert store.match(_embedding(9)) is None
+        assert store.forget("ab12") is True
+        assert outside.exists()
+
+    def test_ordinary_filenames_still_work(self, tmp_path: Path) -> None:
+        base = tmp_path / "bank"
+        store = FaceStore(base_dir=base)
+        face_id = store.enroll("Alice", _embedding(10))
+
+        reloaded = FaceStore(base_dir=base)
+        hit = reloaded.match(_embedding(10))
+        assert hit is not None and hit.face_id == face_id
+
+
+class TestEnrollPersistenceHonesty:
+    """``enroll`` must not report success when the index never reached disk."""
+
+    def test_save_returns_true_on_success(self, tmp_path: Path) -> None:
+        store = FaceStore(base_dir=tmp_path / "bank")
+        store.enroll("Alice", _embedding(11))
+        assert store.save() is True
+
+    def test_save_returns_false_when_the_index_cannot_land(self, tmp_path: Path) -> None:
+        base = tmp_path / "bank"
+        store = FaceStore(base_dir=base)
+        store.load()
+        # Make the index path unlandable: faces.json as a *directory* makes
+        # the atomic replace fail with an OSError (IsADirectoryError).
+        (base / "faces.json").mkdir(parents=True, exist_ok=True)
+        assert store.save() is False
+
+    def test_enroll_rolls_back_and_raises_when_save_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        base = tmp_path / "bank"
+        store = FaceStore(base_dir=base)
+        store.load()
+        monkeypatch.setattr(store, "save", lambda: False)
+
+        with pytest.raises(OSError):
+            store.enroll("Alice", _embedding(12))
+
+        assert store.permanent_count == 0  # in-memory record rolled back
+        assert list((base / "embeddings").glob("*.npy")) == []  # orphan removed

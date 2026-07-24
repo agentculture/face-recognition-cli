@@ -363,7 +363,10 @@ class TestEnsureModel:
 
         def _fake_download(url, dest, *, timeout=30.0):
             calls.append((url, dest))
-            assert dest.name.endswith(".part")  # staged, never written in place
+            # Staged, never written in place — with a per-process unique
+            # suffix so concurrent downloaders cannot share a temp file.
+            assert ".part." in dest.name
+            assert dest.name.startswith("model.onnx.part.")
             dest.write_bytes(b"x" * 150_000)
 
         monkeypatch.setattr(engine, "_download", _fake_download)
@@ -378,7 +381,7 @@ class TestEnsureModel:
         assert path == tmp_path / "models" / "model.onnx"
         assert path.stat().st_size == 150_000
         assert len(calls) == 1
-        assert not (tmp_path / "models" / "model.onnx.part").exists()
+        assert list((tmp_path / "models").glob("model.onnx.part*")) == []
 
     def test_skips_download_when_already_present(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
@@ -418,7 +421,7 @@ class TestEnsureModel:
         assert excinfo.value.code == EXIT_ENV_ERROR
         assert "truncated" in excinfo.value.message
         assert not (tmp_path / "model.onnx").exists()
-        assert not (tmp_path / "model.onnx.part").exists()
+        assert list(tmp_path.glob("model.onnx.part*")) == []
 
     def test_rejects_download_with_network_error_and_cleans_up_partial(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
@@ -437,7 +440,7 @@ class TestEnsureModel:
                 models_dir=tmp_path,
             )
 
-        assert not (tmp_path / "model.onnx.part").exists()
+        assert list(tmp_path.glob("model.onnx.part*")) == []
         assert not (tmp_path / "model.onnx").exists()
 
     def test_creates_the_models_dir_when_absent(
