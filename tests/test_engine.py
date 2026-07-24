@@ -29,6 +29,7 @@ import subprocess  # nosec B404 - fixed argv, no shell, test-only import probe
 import sys
 import types
 import urllib.error
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import numpy as np
@@ -341,8 +342,10 @@ class TestMissingCv2:
 
         monkeypatch.setattr(engine, "_download", _fail)
 
+        eng = engine.FaceEngine(models_dir=tmp_path)
+        frame = np.zeros((4, 4, 3), dtype=np.uint8)
         with pytest.raises(CliError):
-            engine.FaceEngine(models_dir=tmp_path).detect(np.zeros((4, 4, 3), dtype=np.uint8))
+            eng.detect(frame)
 
         assert list(tmp_path.iterdir()) == []
 
@@ -651,7 +654,7 @@ class TestDetectWithFakeCv2:
 
     def test_face_detection_is_frozen(self) -> None:
         detection = engine.FaceDetection(bbox_norm=(0.0, 0.0, 1.0, 1.0), embedding=np.zeros(128))
-        with pytest.raises(Exception):  # dataclasses.FrozenInstanceError
+        with pytest.raises(FrozenInstanceError):
             detection.bbox_norm = (1.0, 1.0, 1.0, 1.0)  # type: ignore[misc]
 
 

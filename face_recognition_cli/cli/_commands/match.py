@@ -67,7 +67,7 @@ def cmd_match(args: argparse.Namespace) -> None:
         )
         return
 
-    text = f"face_id: {hit.face_id}\n" f"name: {hit.name}\n" f"score: {hit.score:.4f}"
+    text = f"face_id: {hit.face_id}\nname: {hit.name}\nscore: {hit.score:.4f}"
     emit_result(text, json_mode=False)
 
 

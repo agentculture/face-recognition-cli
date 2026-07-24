@@ -1,0 +1,5 @@
+# Generated devague exports (`devague export`) render claim text verbatim,
+# including `<placeholder>` angle-bracket notation that MD033 misreads as
+# inline HTML. Hand-escaping would be overwritten on the next export, so the
+# rule is relaxed for this generated-artifact directory only.
+MD033: false

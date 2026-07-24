@@ -7,8 +7,6 @@ this suite is safe to run on a developer machine or CI without side effects.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from face_recognition_cli import state
@@ -179,9 +177,5 @@ def test_models_dir_unaffected_by_explicit_bank_dir_calls(
 
 def test_state_dir_env_var_name_is_exact(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Sanity check the exact env var name so a typo can't silently pass other tests."""
-    monkeypatch.delenv("FACE_RECOGNITION_STATE_DIR", raising=False)
-    os.environ["FACE_RECOGNITION_STATE_DIR"] = str(tmp_path / "exact-name-check")
-    try:
-        assert state.state_dir() == tmp_path / "exact-name-check"
-    finally:
-        del os.environ["FACE_RECOGNITION_STATE_DIR"]
+    monkeypatch.setenv("FACE_RECOGNITION_STATE_DIR", str(tmp_path / "exact-name-check"))
+    assert state.state_dir() == tmp_path / "exact-name-check"

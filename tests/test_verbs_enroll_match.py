@@ -161,9 +161,9 @@ def _run(argv: list[str]):
 
 class TestArgumentSurface:
     def test_enroll_requires_name(self, tmp_path) -> None:
-        image = _write_image(tmp_path)
+        argv = ["enroll", "--image", str(_write_image(tmp_path))]
         with pytest.raises(SystemExit):
-            _parse(["enroll", "--image", str(image)])
+            _parse(argv)
 
     def test_enroll_requires_image(self) -> None:
         with pytest.raises(SystemExit):
@@ -215,8 +215,9 @@ class TestMissingCv2:
         image = _write_image(tmp_path)
         _patch_detect(monkeypatch, _detection(_unit(0)))
 
+        argv = ["enroll", "--name", "ada", "--image", str(image)]
         with pytest.raises(CliError) as excinfo:
-            _run(["enroll", "--name", "ada", "--image", str(image)])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_ENV_ERROR
         assert excinfo.value.code == 2
@@ -228,21 +229,24 @@ class TestMissingCv2:
         image = _write_image(tmp_path)
         _patch_detect(monkeypatch, _detection(_unit(0)))
 
+        argv = ["match", "--image", str(image)]
         with pytest.raises(CliError) as excinfo:
-            _run(["match", "--image", str(image)])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_ENV_ERROR
         assert "face-recognition-cli[cpu]" in excinfo.value.remediation
 
     def test_missing_extra_never_leaks_an_import_traceback(self, no_cv2, tmp_path) -> None:
         """The failure is a CliError, not a bare ImportError."""
+        path = str(_write_image(tmp_path))
         with pytest.raises(CliError):
-            _frames.load_frame(str(_write_image(tmp_path)))
+            _frames.load_frame(path)
 
     def test_a_bad_path_is_diagnosed_before_the_cv2_probe(self, no_cv2, tmp_path) -> None:
         """A typo'd path must not be reported as a missing opencv install."""
+        argv = ["enroll", "--name", "ada", "--image", str(tmp_path / "nope.png")]
         with pytest.raises(CliError) as excinfo:
-            _run(["enroll", "--name", "ada", "--image", str(tmp_path / "nope.png")])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert excinfo.value.code == 1
@@ -273,24 +277,27 @@ class TestFrameLoading:
         assert fake_cv2.calls[0][0] == _image_bytes()
 
     def test_missing_file_is_a_user_error(self, fake_cv2, tmp_path) -> None:
+        path = str(tmp_path / "absent.png")
         with pytest.raises(CliError) as excinfo:
-            _frames.load_frame(str(tmp_path / "absent.png"))
+            _frames.load_frame(path)
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert "path" in excinfo.value.remediation.lower()
 
     def test_a_directory_path_is_a_user_error(self, fake_cv2, tmp_path) -> None:
+        path = str(tmp_path)
         with pytest.raises(CliError) as excinfo:
-            _frames.load_frame(str(tmp_path))
+            _frames.load_frame(path)
 
         assert excinfo.value.code == EXIT_USER_ERROR
 
     def test_undecodable_bytes_on_disk_are_a_user_error(self, fake_cv2, tmp_path) -> None:
         garbage = tmp_path / "notes.txt"
         garbage.write_bytes(b"this is definitely not an encoded image")
+        path = str(garbage)
 
         with pytest.raises(CliError) as excinfo:
-            _frames.load_frame(str(garbage))
+            _frames.load_frame(path)
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert "decode" in excinfo.value.message
@@ -430,8 +437,9 @@ class TestEnroll:
     ) -> None:
         _patch_detect(monkeypatch, None)
 
+        argv = ["enroll", "--name", "ada", "--image", str(_write_image(tmp_path))]
         with pytest.raises(CliError) as excinfo:
-            _run(["enroll", "--name", "ada", "--image", str(_write_image(tmp_path))])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert excinfo.value.message == "no face detected in the image"
@@ -442,8 +450,9 @@ class TestEnroll:
     ) -> None:
         _patch_detect(monkeypatch, None)
 
+        argv = ["enroll", "--name", "ada", "--image", str(_write_image(tmp_path))]
         with pytest.raises(CliError):
-            _run(["enroll", "--name", "ada", "--image", str(_write_image(tmp_path))])
+            _run(argv)
 
         assert not (tmp_path / "state" / "banks" / "default" / "faces.json").exists()
 
@@ -632,17 +641,19 @@ class TestMatch:
         assert excinfo.value.code == EXIT_USER_ERROR
 
     def test_missing_image_file_is_a_user_error(self, fake_cv2, tmp_path) -> None:
+        argv = ["match", "--image", str(tmp_path / "gone.png")]
         with pytest.raises(CliError) as excinfo:
-            _run(["match", "--image", str(tmp_path / "gone.png")])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_USER_ERROR
 
     def test_undecodable_file_is_a_user_error(self, fake_cv2, tmp_path) -> None:
         garbage = tmp_path / "garbage.png"
         garbage.write_bytes(b"\x00\x01\x02 not an image")
+        argv = ["match", "--image", str(garbage)]
 
         with pytest.raises(CliError) as excinfo:
-            _run(["match", "--image", str(garbage)])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert "decode" in excinfo.value.message
@@ -652,8 +663,9 @@ class TestMatch:
     ) -> None:
         _patch_detect(monkeypatch, None)
 
+        argv = ["match", "--image", str(_write_image(tmp_path))]
         with pytest.raises(CliError) as excinfo:
-            _run(["match", "--image", str(_write_image(tmp_path))])
+            _run(argv)
 
         assert excinfo.value.code == EXIT_USER_ERROR
         assert excinfo.value.message == "no face detected in the image"

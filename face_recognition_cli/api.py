@@ -79,7 +79,7 @@ def build_face_recognition(
     :class:`~face_recognition_cli.store.FaceStore` only when given, so their
     own defaults apply otherwise.
     """
-    global _WARNED  # noqa: PLW0603 - one process-wide warning, by design
+    global _WARNED  # one process-wide warning latch, by design
 
     if not _cv2_available():
         if not _WARNED:
@@ -96,7 +96,7 @@ def build_face_recognition(
 
         engine = FaceEngine(models_dir=models_dir) if models_dir is not None else FaceEngine()
         store = FaceStore(base_dir=store_base_dir) if store_base_dir is not None else FaceStore()
-    except Exception:  # noqa: BLE001 - a broken vision stack disables the feature, nothing more
+    except Exception:  # a broken vision stack disables the feature, nothing more
         if not _WARNED:
             _WARNED = True
             logger.warning(

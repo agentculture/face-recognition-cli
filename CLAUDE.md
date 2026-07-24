@@ -152,7 +152,7 @@ uv run black --check face_recognition_cli tests
 uv run isort --check-only face_recognition_cli tests
 uv run flake8 face_recognition_cli tests
 uv run bandit -c pyproject.toml -r face_recognition_cli    # B101/B404/B603 skipped in pyproject
-markdownlint-cli2 "**/*.md" "#node_modules" "#.local" "#.claude/skills" "#.teken"
+markdownlint-cli2 "**/*.md" "#node_modules" "#.local" "#.claude/skills" "#.teken" "#.venv" "#.devague"
 ```
 
 The rubric gate currently reports `healthy: 26/26`. It runs the *installed* CLI

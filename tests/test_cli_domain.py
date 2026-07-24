@@ -292,6 +292,7 @@ class TestTwoBankIsolation:
         self, banks: dict[str, dict[str, str]], capsys: pytest.CaptureFixture[str]
     ) -> None:
         foreign = banks["colleague"]["linus"]
+        colleague_before = _snapshot("colleague")
 
         rc = main(["forget", foreign, "--bank", "reachy"])
 
@@ -299,7 +300,7 @@ class TestTwoBankIsolation:
         assert rc == 1
         assert captured.err.startswith("error:")
         assert "hint:" in captured.err
-        assert _snapshot("colleague") == _snapshot("colleague")
+        assert _snapshot("colleague") == colleague_before
         assert _run_json(["list", "--bank", "colleague"], capsys)["count"] == 1
 
     def test_the_bank_env_override_drives_the_cli(
