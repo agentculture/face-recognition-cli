@@ -1,6 +1,6 @@
 [project]
 name = "face-recognition-cli"
-version = "0.7.0"
+version = "0.8.0"
 description = "Face recognition and identity management: detect faces, collect embeddings per identity, and manage them by generated id and human name — enroll, match, list, forget one, and forget all at once. Extracted from reachy-mini-cli's OpenCV YuNet+SFace engine so Reachy Mini depends on it instead of carrying its own copy."
 readme = "README.md"
 license = "Apache-2.0"
@@ -13,7 +13,35 @@ classifiers = [
     "Topic :: Software Development",
     "Intended Audience :: Developers",
 ]
-dependencies = []
+dependencies = ["numpy>=1.26,<3"]
+
+# `numpy` is the only base dependency: both the ported FaceEngine (embedding
+# arrays) and FaceStore (per-embedding .npy files) need it, so it can't stay
+# behind an extra the way the template's zero-runtime-deps property would
+# prefer — this deliberately gives that property up (issue #1, q1).
+#
+# [cpu] and [gpu] are compute-class extras, not model-class extras: both pull
+# the SAME opencv-python-headless wheel and run the SAME ONNX models
+# (YuNet detector + SFace embedder), producing the SAME embedding space. A
+# face enrolled under one extra must match under the other — accelerating
+# *execution* must never fork the model.
+[project.optional-dependencies]
+# The Raspberry-Pi-class robot box: the default path. headless because a
+# robot box has no GUI to bind against. cv2 is lazy-imported inside
+# face_recognition_cli's engine module only — never at import time — so a
+# bare install without this extra stays importable and fails with a clean
+# exit-2 CliError naming [cpu]/[gpu] instead of an ImportError traceback.
+cpu = ["opencv-python-headless>=4.9,<5"]
+# DGX Spark / Jetson / RTX-class hosts, for throughput. Same package, same
+# models: v1 GPU acceleration is cv2's own CUDA DNN backend, used when the
+# locally installed OpenCV build carries it (Jetson/DGX builds typically do;
+# the PyPI opencv-python-headless wheel does not ship CUDA DNN, so this extra
+# alone doesn't guarantee acceleration — the build backing it does). No
+# second inference stack is introduced here, so the embedding space stays
+# identical by construction. onnxruntime-gpu over the same ONNX files is the
+# documented future path if throughput demands more than the DNN backend
+# gives.
+gpu = ["opencv-python-headless>=4.9,<5"]
 
 [project.urls]
 Homepage = "https://github.com/agentculture/face-recognition-cli"

@@ -25,6 +25,11 @@ _ARTIFACTS = [
 ]
 
 _VERBS = [
+    "enroll --name <name> --image <path|-> — file a face under a name",
+    "match --image <path|-> — identify a face against a bank (a no-match exits 0)",
+    "list — inventory of the identities enrolled in a bank",
+    "forget <id> — delete one identity",
+    "forget-all — delete every identity in a bank (dry-run; --apply commits)",
     "whoami — identity probe (nick, version, backend, model)",
     "learn — structured self-teaching prompt",
     "explain <path> — markdown docs for a topic",

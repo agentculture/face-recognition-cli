@@ -1,0 +1,415 @@
+{
+  "slug": "issue-1-engine-extraction",
+  "title": "issue-1 engine extraction",
+  "schema_version": 3,
+  "status": "exported",
+  "created": "2026-07-24T18:53:51Z",
+  "updated": "2026-07-24T19:14:25Z",
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "announcement",
+      "text": "face-recognition-cli ships the extracted YuNet+SFace engine and identity store from reachy-mini-cli: enroll, match, list, forget, forget-all verbs, cpu/gpu extras over the same ONNX models, and a stable API reachy-mini-cli can import",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h9",
+          "text": "Every element of the announcement exists on disk at release \u2014 engine, store, banks, the five verbs, extras, build_face_recognition \u2014 checkable via the c16 success signals",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Implement as the extraction PR series described by the frame: port the two modules, add banks + verbs + extras, publish, then open the cross-repo migration issue \u2014 publish-first, migrate-second"
+    },
+    {
+      "id": "c2",
+      "kind": "requirement",
+      "text": "Port reachy/vision/face.py (FaceEngine, 240 lines) and reachy/vision/face_store.py (FaceStore, 327 lines) keeping the SFace 128-dim embedding space and the on-disk layout (faces.json index + one .npy per embedding) byte-compatible \u2014 the compatibility invariant is the reason extraction beat dlib per issue #1",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h2",
+          "text": "Compatibility is provable: a faces.json + embeddings/*.npy tree written by reachy's face_store.py loads through the ported FaceStore with identical match results, and the ported engine downloads the exact same two model-zoo URLs (no model change anywhere in the diff)",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Port face.py -> face_recognition_cli/engine.py and face_store.py -> face_recognition_cli/store.py (names free; layout/content faithful), preserving faces.json schema, embeddings/<id>.npy layout, DEFAULT_MATCH_THRESHOLD=0.5, DEFAULT_TEMP_TTL=900, 4-char secrets ids, size floors, .part-rename downloads"
+    },
+    {
+      "id": "c3",
+      "kind": "requirement",
+      "text": "The port must rehome exactly two reachy-internal imports: reachy.cli._errors.CliError/EXIT_ENV_ERROR (face.py:44) maps to the identical face_recognition_cli/cli/_errors.py contract already on disk, and reachy.daemon.state_dir (face.py:103, face_store.py:52) needs a new state-dir helper in this package; remediation strings change from 'reachy-mini-cli[vision]' to this package's extras",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h3",
+          "text": "After the port, grep for 'from reachy' / 'import reachy' over face_recognition_cli/ returns nothing, and the missing-extra CliError remediation names a face-recognition-cli extra, not reachy's [vision]",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Swap reachy.cli._errors -> face_recognition_cli.cli._errors (same contract, already on disk); replace reachy.daemon.state_dir with a new face_recognition_cli state-dir helper implementing the XDG chain + banks layout from c12"
+    },
+    {
+      "id": "c4",
+      "kind": "requirement",
+      "text": "Expose a stable consumer API shaped like reachy/behavior/face_sense.py's build_face_recognition(*, models_dir=None, store_base_dir=None) -> tuple[engine, store] | None: probe opencv via importlib.util.find_spec before any lazy import, return None (never raise) when the stack is absent, keep models_dir=/store_base_dir= injectable \u2014 this is the exact call shape the first consumer already uses",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h4",
+          "text": "On an install without opencv, build_face_recognition() returns None (no raise, one process-wide warning); with [cpu] installed it returns (engine, store) honouring models_dir=/store_base_dir= \u2014 matching the exact call shape face_sense.py uses today",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Expose build_face_recognition(*, models_dir=None, store_base_dir=None) at a stable import path (package root __init__), probing cv2 via importlib.util.find_spec before any lazy import"
+    },
+    {
+      "id": "c5",
+      "kind": "requirement",
+      "text": "New CLI verbs enroll / match / list / forget / forget-all register through the existing pattern: one module per verb under cli/_commands/ exposing register(sub) with --json and set_defaults(func=...), wired at the marked call site in cli/__init__.py's _build_parser(); forget-all is dry-run by default with --apply to commit (mesh write-verb rule), reporting count, ids, and names before deletion",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h5",
+          "text": "All five verbs are registered and pass the structured-error contract (no traceback ever, hint: line present, --json parseable); forget-all without --apply deletes nothing and reports the would-delete set (count, ids, names); with --apply it empties the selected bank only",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "One module per verb under cli/_commands/ following whoami.py: register(sub), --json, set_defaults(func=...); wire at cli/__init__.py:91; enroll/match take --image <path> or '-' for stdin bytes (cv2.imdecode), --bank on every store-touching verb"
+    },
+    {
+      "id": "c6",
+      "kind": "requirement",
+      "text": "Every new verb gets an ENTRIES key in explain/catalog.py \u2014 test_every_catalog_path_resolves only verifies existing entries resolve, nothing fails when a verb lacks an entry, so the catalog additions are a deliberate checklist item; the teken rubric gate (26/26, runs the installed CLI end-to-end) must stay green",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h6",
+          "text": "face-recognition explain <verb> resolves for every new verb and teken cli doctor . --strict reports healthy after the CLI changes",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Add ENTRIES keys for enroll/match/list/forget/forget-all (and the bank concept) in explain/catalog.py in the same PR that adds the verbs; run the rubric gate locally before pushing"
+    },
+    {
+      "id": "c7",
+      "kind": "requirement",
+      "text": "[cpu] pins opencv-python-headless>=4.9,<5 (the same bound reachy-mini-cli's [vision] uses) and is the default documented path; [gpu] accelerates execution of the identical ONNX files only (OpenCV DNN CUDA or onnxruntime-gpu) and never swaps models \u2014 a bare install with neither extra stays importable and every engine verb fails with a clean exit-2 CliError naming the right extra",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h7",
+          "text": "A bare install (pip install face-recognition-cli, no extras) imports and runs every introspection verb; enroll/match exit 2 naming [cpu]; the codebase contains exactly one pair of model URLs/filenames so the gpu path cannot silently reference different models",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "[project.optional-dependencies]: cpu = [opencv-python-headless>=4.9,<5]; gpu accelerates execution of the identical ONNX files (opencv contrib CUDA or onnxruntime-gpu \u2014 pick at implementation time and document); numpy joins base dependencies per q1"
+    },
+    {
+      "id": "c8",
+      "kind": "boundary",
+      "text": "reachy-mini-cli's side of the migration (deleting its face.py/face_store.py, rewiring face_sense.py and [vision]) is out of scope here \u2014 issue #1 says do not push changes into that repo; the deliverable toward it is a cross-repo issue via the communicate skill, sequenced publish-first-migrate-second",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h10",
+          "text": "No commit in this work touches ../reachy-mini-cli; the only cross-repo artifact is the migration issue, opened only after a usable release is published",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    },
+    {
+      "id": "c9",
+      "kind": "non_goal",
+      "text": "No camera access, no watch loop, no threading inside the engine: detect(frame) stays synchronous and stateless-per-call (nova's daemon thread was deliberately not ported \u2014 face.py's docstring records why), and face-cli (expressive output) / webcam-cli (capture) / media-cli (device plane) own their lanes \u2014 this tool does not absorb them",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    },
+    {
+      "id": "c10",
+      "kind": "assumption",
+      "text": "reachy-mini-cli's tests/test_vision_face.py (539 lines) is the porting reference for engine+store tests \u2014 the determinism seams (base_dir=, clock=, now=, models_dir=) exist specifically so those tests run without mocking time or network; coverage gate here is fail_under=60 and CI paths (pyproject.toml + face_recognition_cli/**) already cover the new modules with no workflow edits",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    },
+    {
+      "id": "c11",
+      "kind": "requirement",
+      "text": "README gains a consent/privacy section (brief open question 5): the repo is public and stores biometric identifiers \u2014 record retention policy, deletion ease (forget/forget-all), and that embeddings never leave the machine (only network access is the one-time model-zoo download, already true of the ported engine)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h8",
+          "text": "The README privacy section states: embeddings never leave the machine, the only network access is the one-time model-zoo download, deletion is one verb away (forget/forget-all per bank) \u2014 and each statement is true of the shipped code",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Write the section against the code actually landed (cite the download function as the only network path); include per-bank isolation as part of the privacy story"
+    },
+    {
+      "id": "c12",
+      "kind": "requirement",
+      "text": "State layout is per-consumer face banks: <state dir>/banks/<consumer>/ (faces.json + embeddings/) so reachy has its own bank, colleague its own, fully separate \u2014 selected via a --bank flag (env-overridable) with a sane default bank; ONNX models stay shared at <state dir>/models/ since both banks embed in the same space and the 37MB SFace file need not be duplicated",
+      "origin": "user",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h1",
+          "text": "Two banks are fully isolated (an identity enrolled in one is invisible to list/match/forget in the other) while both share one models/ directory \u2014 verified by a test that enrolls in two banks and cross-checks",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": "Resolve bank paths above the ported store: default_state_dir()/banks/<bank>/ passed as base_dir=, models always default_state_dir()/models; --bank flag on every store-touching verb, FACE_RECOGNITION_BANK env override, default bank name 'default'. Verify: enroll into bank A, then list/match in bank B sees nothing; models dir contains exactly one copy of each ONNX after use from two banks"
+    },
+    {
+      "id": "c13",
+      "kind": "audience",
+      "text": "reachy-mini-cli (the first consumer, importing build_face_recognition), and mesh agents/operators driving the CLI directly \u2014 each consumer with its own isolated face bank (reachy's, colleague's, ...)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h11",
+          "text": "The shipped surface serves both audiences: reachy imports build_face_recognition unchanged in call shape, and operators/agents get isolated per-consumer banks via --bank",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    },
+    {
+      "id": "c14",
+      "kind": "after_state",
+      "text": "face-recognition-cli is published on PyPI with the ported FaceEngine + FaceStore, per-consumer banks, enroll/match/list/forget/forget-all verbs (all --json), [cpu]/[gpu] extras over the same ONNX models, and a stable build_face_recognition API \u2014 so reachy-mini-cli can delete its vision/face copies and depend on this package",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h12",
+          "text": "The after-state is reached exactly when publish.yml succeeds on main for the release version and the published wheel satisfies reachy's face_sense call shape",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    },
+    {
+      "id": "c15",
+      "kind": "before_state",
+      "text": "the engine exists only inside reachy-mini-cli as a library with no CLI verbs of its own; this repo is the culture-agent-template scaffold with zero face-recognition code on disk (CLAUDE.md marks all domain work as planned)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h13",
+          "text": "Grounded in checked-in reality: git ls-files shows no engine/store module today and CLAUDE.md marks all domain work as planned",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    },
+    {
+      "id": "c16",
+      "kind": "success_signal",
+      "text": "pytest green + teken cli doctor --strict green in CI; a bare install stays importable with engine verbs failing exit-2 naming the extra; an end-to-end enroll-then-match roundtrip works from the CLI on a sample image via [cpu]; and a faces store written by reachy's face_store.py loads unchanged through the ported store (base_dir= pointed at it)",
+      "origin": "llm",
+      "status": "confirmed",
+      "honesty_conditions": [
+        {
+          "id": "h14",
+          "text": "Each listed signal is mechanically checkable \u2014 CI jobs, exit codes, an enroll-then-match roundtrip test, and a reachy-written-store fixture load test \u2014 none requires judgment",
+          "status": "confirmed",
+          "instruction": ""
+        }
+      ],
+      "hard_questions": [],
+      "links": [],
+      "instruction": ""
+    }
+  ],
+  "open_vagueness": [
+    {
+      "id": "v1",
+      "text": "PyPI/TestPyPI Trusted Publisher registration for face-recognition-cli is unverified and unverifiable from the repo alone (needs PyPI-side access); publish.yml assumes it. Blocks the first real release, not the implementation itself.",
+      "kind": "unknown_nonblocking",
+      "claim_id": null,
+      "resolved": false,
+      "resolution": "",
+      "resolution_claim_id": null
+    }
+  ],
+  "scope_entries": [
+    {
+      "id": "s1",
+      "surface": "../reachy-mini-cli/reachy/vision/face.py + face_store.py",
+      "finding": "both files read in full; FaceEngine is lazy-cv2 YuNet+SFace with .part-then-rename model downloads behind size floors (100KB/20MB); FaceStore already implements enroll/match/forget/list_faces/get_unique_id plus temp tier; on-disk layout is faces.json + embeddings/<id>.npy",
+      "seeds": [
+        "c2"
+      ]
+    },
+    {
+      "id": "s2",
+      "surface": "import graph of the two ported modules",
+      "finding": "grep of face.py/face_store.py shows only two reachy.* imports (CliError and state_dir); face_recognition_cli/cli/_errors.py already defines the same CliError(code,message,remediation) + EXIT_ENV_ERROR=2 shape, so the engine's error contract transplants unchanged",
+      "seeds": [
+        "c3"
+      ]
+    },
+    {
+      "id": "s3",
+      "surface": "../reachy-mini-cli/reachy/behavior/face_sense.py (build_face_recognition, lines 232-274)",
+      "finding": "read in full: probes vision_unavailable_reason() first, lazy-imports FaceEngine/FaceStore only after the probe, one process-wide warning, returns (engine, store) or None; face_sense calls only engine.detect and store.match \u2014 nothing else from the store's surface",
+      "seeds": [
+        "c4"
+      ]
+    },
+    {
+      "id": "s4",
+      "surface": "face_recognition_cli/cli/__init__.py + cli/_commands/ + _errors.py + _output.py",
+      "finding": "read the parser plumbing: _CliArgumentParser json-hint pre-scan, _dispatch wrapping, parser_class propagation, and the 'Register your own noun groups here' call site at cli/__init__.py:91 \u2014 new verbs slot in with no plumbing changes; whoami.py is the canonical example",
+      "seeds": [
+        "c5"
+      ]
+    },
+    {
+      "id": "s5",
+      "surface": "face_recognition_cli/explain/catalog.py + teken rubric gate",
+      "finding": "catalog is a dict keyed by command-path tuples with both 'face-recognition-cli' and 'face-recognition' resolving to root; CI's lint job runs 'teken cli doctor . --strict' against the installed CLI, so a broken verb fails CI even when pytest is green",
+      "seeds": [
+        "c6"
+      ]
+    },
+    {
+      "id": "s6",
+      "surface": "../reachy-mini-cli/pyproject.toml [project.optional-dependencies]",
+      "finding": "read the extras block: [vision]=opencv-python-headless>=4.9,<5 with the lazy-import rationale in comments; [cpu]/[gpu] exist there as generic empty compute-class extras \u2014 this repo's [cpu]/[gpu] carry the actual engine deps instead, per the brief's steer",
+      "seeds": [
+        "c7"
+      ]
+    },
+    {
+      "id": "s7",
+      "surface": "pyproject.toml (this repo, dependencies = [])",
+      "finding": "confirmed dependencies=[] and no [project.optional-dependencies] section exists yet; reachy-mini-cli carries numpy as a base dep, so the port forces an explicit decision here",
+      "seeds": []
+    },
+    {
+      "id": "s8",
+      "surface": "../reachy-mini-cli/reachy/daemon.py state_dir() (lines 43-56)",
+      "finding": "read the resolution chain verbatim; both ported constructors already take base_dir=/models_dir= overrides, so the injection seam for reachy's existing data exists regardless of which default this package picks",
+      "seeds": []
+    },
+    {
+      "id": "s9",
+      "surface": "grep -rn 'remember_temporary|get_temporary|cleanup_expired|temporary_count' ../reachy-mini-cli/reachy/",
+      "finding": "empty result outside face_store.py: the temporary tier is unused by the only consumer, so keeping it is a fidelity choice, not a compatibility requirement \u2014 the on-disk index is untouched either way (temp tier is memory-only, never persisted)",
+      "seeds": []
+    },
+    {
+      "id": "s10",
+      "surface": "../webcam-cli/README.md (capture surface + lane statement)",
+      "finding": "read the README: webcam-cli owns USB capture and 'does not own interpreting what is in a frame (a vision model's job)' \u2014 the lane split is already stated from their side; but the single-still 'capture' verb this tool would want as a feeder does not exist yet",
+      "seeds": []
+    },
+    {
+      "id": "s11",
+      "surface": "culture.yaml + tests/test_cli.py:44,54 + CLAUDE.md 'Identity and the backend mismatch'",
+      "finding": "verified the assertions exist at those lines ('backend: colleague' text and payload['backend']=='colleague' JSON); CLAUDE.md documents the mesh evidence (only steward + this repo declare colleague) and the exact three-part move if flipped",
+      "seeds": []
+    },
+    {
+      "id": "s12",
+      "surface": "issue #1 'The reachy-mini-cli migration' section",
+      "finding": "the brief is explicit: 'Do not push changes into reachy-mini-cli yourself. Open an issue on that repo... publish a usable release first, migrate second'",
+      "seeds": [
+        "c8"
+      ]
+    },
+    {
+      "id": "s13",
+      "surface": "face.py module docstring (no-threading deviation) + issue #1 'Your lane'",
+      "finding": "face.py's docstring documents 'No threading / no background dispatch loop' as a deliberate deviation from nova with loop ownership assigned to the caller; the brief assigns perceptual-input only, with face-cli explicitly 'share a subject and nothing else'",
+      "seeds": [
+        "c9"
+      ]
+    },
+    {
+      "id": "s14",
+      "surface": "../reachy-mini-cli/tests/test_vision_face.py + .github/workflows/{tests,publish}.yml",
+      "finding": "test file located and sized; publish.yml path filter read \u2014 face_recognition_cli/** is already included so domain code triggers publish automatically; version-check job enforces the every-PR bump",
+      "seeds": [
+        "c10"
+      ]
+    },
+    {
+      "id": "s15",
+      "surface": "issue #1 'Open questions' 5 + face.py download path",
+      "finding": "verified in face.py that the only network code is the model-zoo _download with fixed https URLs; nothing else in either ported module touches the network, so the never-phones-home claim is grounded in the code being ported",
+      "seeds": [
+        "c11"
+      ]
+    },
+    {
+      "id": "s16",
+      "surface": "state-layout refinement (user decision on q2)",
+      "finding": "per-consumer banks under <state>/banks/<consumer>/, shared <state>/models/; grounded in s8 (both constructors already take base_dir=/models_dir= so the bank resolver is pure path composition above the ported store, no store changes needed)",
+      "seeds": [
+        "c12"
+      ]
+    }
+  ]
+}

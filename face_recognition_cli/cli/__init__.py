@@ -1,9 +1,15 @@
 """Unified CLI entry point for face-recognition-cli.
 
-The agent-first global verbs (``whoami``, ``learn``, ``explain``, ``overview``,
-``doctor``) are registered here under :mod:`face_recognition_cli.cli._commands`,
-alongside the ``cli`` noun group. Future noun groups register via their own
-``register()`` functions following the same pattern.
+Two families of verbs are registered here, both under
+:mod:`face_recognition_cli.cli._commands` and both through the same one-step
+``register(sub)`` pattern:
+
+* the agent-first introspection verbs — ``whoami``, ``learn``, ``explain``,
+  ``overview``, ``doctor`` — plus the ``cli`` noun group;
+* the domain verbs — ``enroll``, ``match``, ``list``, ``forget``,
+  ``forget-all`` — which read and write the face banks.
+
+Future noun groups register the same way, at the marked call site below.
 
 Error propagation contract
 --------------------------
@@ -64,14 +70,23 @@ def _argv_has_json(argv: list[str] | None) -> bool:
 def _build_parser() -> argparse.ArgumentParser:
     from face_recognition_cli.cli._commands import cli as _cli_group
     from face_recognition_cli.cli._commands import doctor as _doctor_cmd
+    from face_recognition_cli.cli._commands import enroll as _enroll_cmd
     from face_recognition_cli.cli._commands import explain as _explain_cmd
+    from face_recognition_cli.cli._commands import forget as _forget_cmd
+    from face_recognition_cli.cli._commands import forget_all as _forget_all_cmd
     from face_recognition_cli.cli._commands import learn as _learn_cmd
+    from face_recognition_cli.cli._commands import list_faces as _list_cmd
+    from face_recognition_cli.cli._commands import match as _match_cmd
     from face_recognition_cli.cli._commands import overview as _overview_cmd
     from face_recognition_cli.cli._commands import whoami as _whoami_cmd
 
     parser = _CliArgumentParser(
         prog="face-recognition-cli",
-        description="face-recognition-cli — a clonable template for AgentCulture mesh agents.",
+        description=(
+            "face-recognition-cli — face identity: detect the face in an image, enroll "
+            "it under a name, match it against what is already enrolled, and manage "
+            "those identities."
+        ),
     )
     parser.add_argument(
         "--version",
@@ -88,6 +103,15 @@ def _build_parser() -> argparse.ArgumentParser:
     _overview_cmd.register(sub)
     _doctor_cmd.register(sub)
     _cli_group.register(sub)
+
+    # Domain verbs — face identity. Each lives in its own module and touches a
+    # face bank (see `explain banks`); registration order is the help order.
+    _enroll_cmd.register(sub)
+    _match_cmd.register(sub)
+    _list_cmd.register(sub)
+    _forget_cmd.register(sub)
+    _forget_all_cmd.register(sub)
+
     # Register your own noun groups here:
     #   from face_recognition_cli.cli._commands import my_noun as _my_noun_group
     #   _my_noun_group.register(sub)

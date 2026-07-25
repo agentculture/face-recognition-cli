@@ -10,22 +10,39 @@ identities by a generated **id** and a human **name** — enroll, match, list,
 forget one, and forget all at once.
 
 It exists to take over the OpenCV **YuNet + SFace** engine that
-[`reachy-mini-cli`](https://github.com/agentculture/reachy-mini-cli) currently
-carries in `reachy/vision/face.py` + `reachy/vision/face_store.py`, so the robot
-depends on this package instead of shipping its own copy. The full build brief
-is [issue #1](https://github.com/agentculture/face-recognition-cli/issues/1) —
-read it before starting domain work; it records *why* the engine is extracted
-rather than swapped for dlib, and which decisions are still open.
+[`reachy-mini-cli`](https://github.com/agentculture/reachy-mini-cli) carries in
+`reachy/vision/face.py` + `reachy/vision/face_store.py`, so the robot depends on
+this package instead of shipping its own copy. The build brief is
+[issue #1](https://github.com/agentculture/face-recognition-cli/issues/1) — it
+records *why* the engine is extracted rather than swapped for dlib. The frame
+and plan derived from it are checked in under [`docs/specs/`](docs/specs/) and
+[`docs/plans/`](docs/plans/).
 
-**State of the repo today.** This is still the `culture-agent-template` scaffold
-plus this file: an agent-first CLI with the introspection verbs (`whoami`,
-`learn`, `explain`, `overview`, `doctor`, `cli overview`), the vendored skill
-kit, and the CI/publish baseline. **There is no face-recognition code checked in
-yet** — no `FaceEngine`, no `FaceStore`, no `[cpu]`/`[gpu]` extras, no
-`enroll`/`match`/`forget` verbs. Everything under
-[The domain work](#the-domain-work-planned) is *planned*, and is marked as such.
-Keep that boundary honest: when you land a piece, move it out of the planned
-section and describe what is actually on disk.
+**State of the repo today.** The domain work is **on disk**. Alongside the
+scaffold's agent-first CLI (the introspection verbs `whoami`, `learn`,
+`explain`, `overview`, `doctor`, `cli overview`), the vendored skill kit and the
+CI/publish baseline, the package now carries:
+
+- `face_recognition_cli/engine.py` — the ported `FaceEngine`: OpenCV YuNet
+  detector + SFace 128-dim embedder, `cv2` imported lazily.
+- `face_recognition_cli/store.py` — the ported `FaceStore`: cosine matching over
+  a `faces.json` index plus one `.npy` per embedding.
+- `face_recognition_cli/state.py` — the state dir and the per-consumer **bank**
+  layout (`banks/<name>/`, shared `models/`). Pure stdlib.
+- `face_recognition_cli/api.py` — `build_face_recognition()`, the stable import
+  surface `reachy-mini-cli` consumes, re-exported from the package root.
+- five domain verbs under `cli/_commands/` — `enroll`, `match`, `list`,
+  `forget`, `forget-all` — wired into `_build_parser()`, each with an `explain`
+  catalog entry (plus a `banks` concept entry).
+- `[cpu]` / `[gpu]` extras in `pyproject.toml`, and `numpy` as the single base
+  dependency.
+
+What has **not** happened yet: the first real release (task `t12` in the plan)
+and the cross-repo migration issue on `reachy-mini-cli` (`t13`). See
+[The domain work](#the-domain-work-landed) for what shipped and
+[Decisions (recorded)](#decisions-recorded) for the questions the build settled.
+Keep the boundary honest in both directions: describe what is actually on disk,
+and mark anything that runs ahead of it as planned.
 
 Siblings worth knowing: `face-cli` is the *expressive output* side of a face (a
 rendered face on a screen) — you are the *perceptual input* side; you share a
@@ -110,11 +127,18 @@ things move together or `doctor` and CI break:
    file and `explain/catalog.py`'s `_DOCTOR` entry — which names
    `colleague → AGENTS.colleague.md` explicitly — goes stale.
 
+The engine-extraction build **deliberately deferred** this: the backend stays
+`colleague`, because flipping it is an identity change with its own test and
+prose fallout and had no business riding along inside a domain-code extraction.
+It is still owed — see [Decisions (recorded)](#decisions-recorded).
+
 ## Commands
 
 ```bash
 uv sync                                              # create .venv, install (dev deps incl. teken)
 uv run face-recognition whoami                       # run the CLI
+uv run face-recognition list --json                  # a domain verb; needs no OpenCV
+uv sync --extra cpu                                  # add OpenCV, for enroll/match
 uv run pytest -n auto                                # full suite (parallel)
 uv run pytest tests/test_cli.py::test_whoami_text    # a single test
 uv run pytest --cov=face_recognition_cli --cov-report=term   # coverage (CI gate: fail_under=60)
@@ -128,7 +152,7 @@ uv run black --check face_recognition_cli tests
 uv run isort --check-only face_recognition_cli tests
 uv run flake8 face_recognition_cli tests
 uv run bandit -c pyproject.toml -r face_recognition_cli    # B101/B404/B603 skipped in pyproject
-markdownlint-cli2 "**/*.md" "#node_modules" "#.local" "#.claude/skills" "#.teken"
+markdownlint-cli2 "**/*.md" "#node_modules" "#.local" "#.claude/skills" "#.teken" "#.venv" "#.devague"
 ```
 
 The rubric gate currently reports `healthy: 26/26`. It runs the *installed* CLI
@@ -171,23 +195,29 @@ keep it green when you touch the CLI.
   nothing fails if you add a verb *without* a catalog entry, so add the `ENTRIES`
   key yourself when you add a verb.
 - **`whoami` / `doctor`:** `whoami` hand-parses `culture.yaml` with a line
-  scanner (no YAML library — the runtime package has **zero third-party
-  dependencies**, and that is a property worth keeping) and walks up from
-  `__file__` so it reports *this agent's* identity, not whatever `culture.yaml`
-  sits in the caller's cwd.
+  scanner — no YAML library — and walks up from `__file__` so it reports *this
+  agent's* identity, not whatever `culture.yaml` sits in the caller's cwd. The
+  template's *zero* third-party runtime dependencies became **no dependencies
+  beyond `numpy`** when the engine landed (the engine's arrays and the store's
+  `.npy` files force it; `pyproject.toml` records the trade). That is still a
+  property worth keeping: everything the CLI plumbing itself needs is standard
+  library, so the introspection verbs — and `list` / `forget` / `forget-all`,
+  which touch the store but never the engine — run on a bare install with
+  neither extra.
 
 The CLI is cited (cite-don't-import) from teken's `python-cli` reference;
 `teken` is a dev dependency only.
 
-## The domain work (planned)
+## The domain work (landed)
 
-None of this is on disk yet. Sources: issue #1 and the sibling checkout at
-`../reachy-mini-cli`.
+What follows describes code that is on disk. The rationale is kept because the
+invariants are load-bearing: they are *why* the extraction was worth doing, and
+quietly breaking one invalidates faces real people already enrolled.
 
-### What to extract, and the one invariant that outranks everything
+### The invariant that outranks everything
 
-Take over `reachy/vision/face.py` (engine) and `reachy/vision/face_store.py`
-(store) from `reachy-mini-cli`, **keeping the embedding space and the on-disk
+`engine.py` and `store.py` are ports of `reachy/vision/face.py` and
+`reachy/vision/face_store.py`, **keeping the embedding space and the on-disk
 layout compatible**. That compatibility is the whole reason extraction beat
 adopting dlib:
 
@@ -197,29 +227,39 @@ adopting dlib:
 2. dlib needs a cmake/C++ toolchain build on the Raspberry-Pi-class robot box;
    `opencv-python-headless` ships wheels.
 
-### `FaceEngine` (from `reachy/vision/face.py`)
+The claim is tested, not asserted: `tests/fixtures/reachy_store/` is a
+`faces.json` + `embeddings/*.npy` tree written by reachy's own
+`FaceStore.enroll()`, and `tests/test_store.py` loads it through the ported
+store. The two model URL/filename literals at the top of `engine.py` *are* the
+embedding-space contract — editing them forks the vector space.
+
+### `FaceEngine` (`face_recognition_cli/engine.py`)
 
 - OpenCV **YuNet** detector + **SFace** 128-dim embedder, largest-face
-  selection, `alignCrop` + `feature`. `EMBEDDING_DIM = 128`.
-- **`cv2` is imported lazily, inside functions only** — never at module import
-  time. The module must stay importable on a bare install with neither extra; a
-  missing extra surfaces as a clean exit-2 `CliError` pointing at the right
-  extra, not an `ImportError` traceback.
+  selection (by bbox area), `alignCrop` + `feature`. `EMBEDDING_DIM = 128`.
+- **`cv2` is imported lazily, inside functions only** (`_import_cv2`) — never at
+  module import time, so the module stays importable on a bare install with
+  neither extra. A missing extra surfaces as a clean exit-2 `CliError` naming
+  `[cpu]`, not an `ImportError` traceback. `cli/_commands/_frames.py` reuses
+  that same probe rather than reimplementing it, so there is exactly one
+  missing-OpenCV error shape no matter which surface hits it first.
 - ONNX models are pulled from the OpenCV model zoo
   (`face_detection_yunet_2023mar.onnx`, `face_recognition_sface_2021dec.onnx`)
-  into `<state dir>/models/`, downloaded to a `.part` sibling and renamed into
-  place only after clearing a **size sanity floor** (100 KB / 20 MB). A
-  truncated download or a captive-portal HTML page is rejected rather than
-  written to disk, where it would "exist" on the next run and fail cryptically
-  inside OpenCV.
+  into `<state dir>/models/` — shared across banks — downloaded to a `.part`
+  sibling and renamed into place only after clearing a **size sanity floor**
+  (`YUNET_MIN_BYTES = 100_000`, `SFACE_MIN_BYTES = 20_000_000`). A truncated
+  download or a captive-portal HTML page is rejected rather than written to
+  disk, where it would "exist" on the next run and fail cryptically inside
+  OpenCV.
 - `detect(frame)` is **synchronous and stateless-per-call**, returning
   `FaceDetection(bbox_norm, embedding) | None`. Nova's daemon thread and 500 ms
-  interval were deliberately *not* ported: loop ownership belongs to the caller.
-  Do not re-add a background loop inside the engine.
+  interval were deliberately *not* ported: loop ownership belongs to the caller,
+  and that is a recorded non-goal. Do not re-add a background loop inside the
+  engine.
 
-### `FaceStore` (from `reachy/vision/face_store.py`)
+### `FaceStore` (`face_recognition_cli/store.py`)
 
-It already satisfies most of the brief. Port it as-is:
+Ported faithfully; the surface is what reachy already had:
 
 | Member | Behaviour |
 |---|---|
@@ -229,87 +269,186 @@ It already satisfies most of the brief. Port it as-is:
 | `list_faces() -> list[dict]` | Inventory (`id`, `name`, `created`, `num_embeddings`) |
 | `get_unique_id(name)` / `permanent_count` | Lookups |
 | `remember_temporary` / `get_temporary` / `cleanup_expired` / `temporary_count` | Temporary tier with TTL |
-| `load` / `save` | One JSON index (`faces.json`) + one `.npy` per embedding, under `<state dir>/faces` |
+| `load` / `save` | One JSON index (`faces.json`) + one `.npy` per embedding under `embeddings/`, in the bank dir |
 
-Constants: `DEFAULT_MATCH_THRESHOLD = 0.5` (cosine), `DEFAULT_TEMP_TTL = 900`.
-Ids are **4-char lowercase alphanumeric** generated with `secrets` — a CSPRNG
-chosen to sidestep bandit's insecure-random lint, not for confidentiality.
-A corrupt or missing index degrades to "start fresh", never raises; `save` is
-write-then-replace. Every time-sensitive method takes `now=`, and the
-constructor takes `base_dir=` and `clock=`, so it is deterministic under test —
-**keep those seams**, they are why the store is testable without mocking time.
+Constants: `DEFAULT_MATCH_THRESHOLD = 0.5` (cosine), `DEFAULT_TEMP_TTL = 15 * 60`
+(900 s). Ids are **4-char lowercase alphanumeric** generated with `secrets` — a
+CSPRNG chosen to sidestep bandit's insecure-random lint, not for
+confidentiality. A corrupt or missing index degrades to "start fresh", never
+raises; `save` is write-then-replace. Every time-sensitive method takes `now=`,
+and the constructor takes `base_dir=` and `clock=`, so it is deterministic under
+test — **keep those seams**, they are why the store is testable without mocking
+time.
 
-### The genuinely new work
+The **one deliberate deviation from reachy** is the default storage root:
+`default_base_dir()` resolves to `state.bank_dir()` (`<state dir>/banks/<bank>`)
+instead of reachy's `<state dir>/faces`. Format unchanged; only where an
+*unconfigured* store looks.
 
-1. **`forget-all`** — the one requirement `FaceStore` does not already meet.
-   It is destructive and irreversible, so it obeys the mesh write-verb rule:
-   **dry-run by default, `--apply` commits.** Report what *would* be deleted
-   (count, ids, names) first.
-2. **A real CLI surface.** Inside reachy this was a library with no verbs of its
-   own. At minimum `enroll` / `match` / `list` / `forget` / `forget-all`,
-   alongside the template's introspection verbs. Every verb takes `--json`, and
-   every new verb needs an `explain/catalog.py` entry.
-3. **The `[cpu]` / `[gpu]` split** (below).
-4. **Packaging a stable public API** that `reachy-mini-cli` can import.
-   `reachy/behavior/face_sense.py`'s `build_face_recognition(*, models_dir=None,
-   store_base_dir=None) -> tuple[engine, store] | None` is the shape its
-   consumer expects — it probes for opencv with `importlib.util.find_spec`,
-   imports lazily only after the probe, and returns `None` (never raises) when
-   the stack is unavailable. Keep `models_dir=` / `store_base_dir=` injectable.
+Two **hardenings past what reachy shipped**, both failure-path only and both
+recorded in the module docstring — do not "simplify" either back out:
+
+- `load` also catches `UnicodeDecodeError`, so an index that is not valid UTF-8
+  (non-text garbage bytes, not just malformed JSON) degrades to "start fresh"
+  instead of raising.
+- `save` brings its `mkdir` inside the `try`, so an unwritable parent is logged
+  like every other persistence failure instead of propagating.
+
+### State and banks (`face_recognition_cli/state.py`)
+
+Pure standard library — no `numpy`, no `cv2` — so it is importable anywhere.
+`state_dir()` resolves `$FACE_RECOGNITION_STATE_DIR`, else
+`$XDG_STATE_HOME/face-recognition-cli`, else
+`~/.local/state/face-recognition-cli`. Under it:
+
+- `banks/<name>/` — one self-contained index per consumer. `resolve_bank()`
+  takes an explicit name, else `$FACE_RECOGNITION_BANK`, else `default`. Bank
+  isolation is pure path composition *above* the store; the store implements
+  nothing for it.
+- `models/` — the ONNX pair, **bank-independent**. Banks partition identities,
+  not models, and SFace alone is ~37 MB.
+
+### The CLI surface (`face_recognition_cli/cli/_commands/`)
+
+Five verbs, each `--json`, each with an `explain/catalog.py` `ENTRIES` key
+(plus a `("banks",)` concept entry — vocabulary the `--bank` flag needs, with no
+parser of its own):
+
+- **`enroll`** / **`match`** take `--image <path>` or `-` for encoded bytes on
+  stdin, decoded by `_frames.load_frame`. Its diagnosis order is deliberate:
+  bytes are read and checked for emptiness *before* `cv2` is probed, so a typo'd
+  path is exit 1 ("check the path") rather than exit 2 ("install a 60 MB
+  wheel") on a box that merely lacks OpenCV.
+- **`match`** treats a no-match as a *result*, not an error — exit 0 with
+  `no match` / `{"bank": …, "match": null}` — so it works in a shell
+  conditional. `--threshold` overrides the store's 0.5 floor for one call.
+- **`list`** (module `list_faces.py`, named to avoid shadowing the builtin) and
+  **`forget <face_id>`** are the inventory and single-delete verbs; `forget` on
+  an unknown id is a structured user error pointing at `list`.
+- **`forget-all`** is destructive and irreversible, so it obeys the mesh
+  write-verb rule: **dry-run by default, `--apply` commits.** Without `--apply`
+  nothing is deleted and it reports the would-delete set (count, ids, names);
+  with `--apply` it forgets each id in the selected bank only. Every other bank
+  is untouched either way.
+- Every store-touching verb takes `--bank` and echoes the resolved bank back in
+  its `--json` payload — including `match` on a miss, since a null result is
+  only meaningful next to the bank it was searched against.
+
+### The consumer API (`face_recognition_cli/api.py`)
+
+`build_face_recognition(*, models_dir=None, store_base_dir=None) ->
+tuple[FaceEngine, FaceStore] | None`, re-exported from the package root. It is
+deliberately the same call shape `reachy/behavior/face_sense.py` already uses:
+probe for opencv with `importlib.util.find_spec` **before** any lazy import,
+return `None` (never raise) when the stack is unavailable, keep `models_dir=` /
+`store_base_dir=` injectable. The missing-extra warning is emitted exactly once
+per process via a module-level `_WARNED` latch — the extra's absence is a
+property of the process, not of a caller. A broken-but-present stack degrades
+the same way. This is a published contract with an external consumer; do not
+change its shape unilaterally.
 
 ### `[cpu]` and `[gpu]` — the hard invariant
 
-Follow the extras convention `reachy-mini-cli` already uses (its `[cpu]`/`[gpu]`
-are generic compute-class extras; its face engine sits behind `[vision]` =
-`opencv-python-headless>=4.9,<5`):
+Both extras install the **same** `opencv-python-headless>=4.9,<5` (the bound
+`reachy-mini-cli`'s `[vision]` uses) and load the **same** two ONNX files. They
+are compute-class extras, not model-class extras:
 
-- **`[cpu]`** — the Raspberry-Pi-class robot box. `opencv-python-headless`, the
-  default path.
+- **`[cpu]`** — the Raspberry-Pi-class robot box, the default documented path.
 - **`[gpu]`** — DGX Spark / Jetson / RTX-class hosts, for throughput.
 
-**Non-negotiable: both paths run the same ONNX models and produce the same
-embedding space.** A face enrolled on a Jetson must match on the Pi and vice
-versa. Accelerate the *execution* — OpenCV DNN CUDA backend, or onnxruntime-gpu
-over the identical ONNX files — and never swap in a different model on the GPU
-path: that silently forks the embedding space and every stored face becomes
-unmatchable on the other machine. If a second model ever becomes necessary, the
-store must record which model produced each embedding and refuse cross-model
-matches. Say so explicitly rather than letting it happen quietly.
+**Non-negotiable: both paths produce the same embedding space.** A face enrolled
+on a Jetson must match on the Pi and vice versa. The v1 mechanism is
+`engine._try_enable_cuda`, and it is deliberately tiny — it changes *where*
+inference executes, never *which model* executes:
 
-Keep the lazy-import discipline across both: a bare install with **neither**
-extra must stay importable and fail with a clean exit-2 naming the right extra.
+- It probes `cv2.cuda.getCudaEnabledDeviceCount()` and, when positive, selects
+  `DNN_BACKEND_CUDA` / `DNN_TARGET_CUDA`. Every branch degrades to plain CPU;
+  a GPU that cannot be used is not an error.
+- **Only the detector is offered to the GPU.** The recognizer stays on the CPU
+  on purpose: it emits the stored embedding, so keeping it on one backend takes
+  even float-noise off the table for the same-space invariant, while bounding
+  boxes are consumed as pixel geometry and are insensitive to a last-ulp
+  difference. Detection also runs on every frame while embedding runs once per
+  enrol/match, so that is where the throughput is anyway.
+- **The PyPI wheels ship no CUDA DNN**, so this is a silent no-op for a normal
+  pip install; the capability comes from a locally built OpenCV, which
+  Jetson/DGX images typically carry. The `[gpu]` extra therefore declares an
+  intent, not a guarantee — the build backing it decides.
 
-### Open questions — decide, then record the decision here
+Never swap in a different model on the GPU path: that silently forks the
+embedding space and every stored face becomes unmatchable on the other machine.
+onnxruntime-gpu over the *identical* ONNX files is the documented future path if
+the DNN backend stops being enough. If a second model ever becomes necessary,
+the store must record which model produced each embedding and refuse
+cross-model matches. Say so explicitly rather than letting it happen quietly.
 
-From the brief; none are settled. Record each answer in this file (and the
-README where operator-facing) as you land it:
+The lazy-import discipline holds across both: a bare install with **neither**
+extra stays importable, the introspection and store-only verbs still work, and
+the engine verbs fail with a clean exit-2 naming the right extra.
 
-1. **State location.** Reachy stores faces under its own per-user state dir
-   (`$REACHY_STATE_DIR`, else `$XDG_STATE_HOME/reachy`, else the XDG-default
-   state directory under the user's home — see `reachy/daemon.py`'s
-   `state_dir()`), with faces at `<state dir>/faces`. A standalone tool needs
-   its own default — one store both read, or a documented import path?
-   Already-enrolled faces must keep working either way.
-2. **Whose loop?** `detect` is deliberately synchronous and loop-free. Does the
-   CLI grow a continuous watch mode, or stay one-shot and leave loops to callers?
-3. **Where do frames come from?** Take a frame/image path and stay engine-only,
-   or open cameras? Engine-only (fed by `webcam-cli` / `media-cli`) is the
-   cleaner lane split — but agree it with those agents, don't assume it.
-4. **Temporary tier.** Keep the 15-min TTL tier (it exists for a "who are you?"
-   enrolment flow that was never built), or drop it as unused surface?
-5. **Consent and privacy.** This repo is **public** and the tool stores
-   biometric identifiers of real people. Decide retention, how easy deletion is,
-   and whether embeddings ever leave the machine — then write it in the README.
-   Nothing here phones home; the only network access in the extracted engine is
-   the one-time model-zoo download.
+## Decisions (recorded)
 
-### The `reachy-mini-cli` migration
+Issue #1 left five questions open. All five are settled and shipped; the
+reasoning is in [`docs/specs/`](docs/specs/) and the frame under `.devague/`.
 
-`reachy-mini-cli` is the first consumer and the reason this repo exists. Its
-side: delete `reachy/vision/face.py` + `face_store.py`, depend on this package,
-rewire `reachy/behavior/face_sense.py` (`build_face_recognition`) and the
-`[vision]` extra, and keep already-enrolled faces under its `state_dir()/faces`
-working.
+1. **State location — this package's own XDG state dir, partitioned into
+   per-consumer banks.** Not one store both tools read: identities live in
+   `<state dir>/banks/<name>/`, models are shared at `<state dir>/models/`, and
+   selection is `--bank` → `$FACE_RECOGNITION_BANK` → `default`
+   (`$FACE_RECOGNITION_STATE_DIR` overrides the root, which is how tests stay
+   off a real home directory). **Already-enrolled faces keep working** because
+   the format did not change and `base_dir=` is injectable — `reachy-mini-cli`
+   points it at its existing `<state dir>/faces` tree and reads exactly what it
+   wrote.
+2. **Loop ownership stays with the caller.** No watch mode; `detect` is
+   synchronous and the CLI is one-shot. This was already the non-goal and it did
+   not move.
+3. **Frames come in; cameras stay out.** `--image <path>` or `-` for encoded
+   bytes on stdin. `webcam-cli` (capture) and `media-cli` (device plane) keep
+   their lane, and the composition between lanes is a plain pipe. **Known gap:**
+   `webcam-cli` has no single-still capture verb to feed this yet — that belongs
+   in the cross-repo coordination issue, not in an assumption made here.
+4. **The temporary tier is kept, ported as-is.** No consumer uses it — reachy
+   never called it either, and the tier is memory-only so the on-disk index is
+   identical either way. It is the enrolment half of a "who are you?" flow;
+   carrying ~30 lines of dead-but-tested surface beats re-deriving it. Its
+   unused status is recorded in `store.py`'s docstring so nobody mistakes it for
+   a live code path.
+5. **Consent and privacy — a README section, written against the shipped code.**
+   Embeddings and the identity index are local only, with no telemetry; the sole
+   network path is the one-time model-zoo download in `engine._download`;
+   deletion is a first-class verb (`forget` / `forget-all`, per bank); and what
+   is stored is a 128-dim vector plus a name and a 4-char id, not a photograph.
+
+Two further decisions the build forced:
+
+- **`numpy` is a base dependency** (`dependencies = ["numpy>=1.26,<3"]`). The
+  engine's arrays and the store's `.npy` files both need it, so it cannot sit
+  behind an extra; the template's zero-runtime-deps property was deliberately
+  given up for it and nothing else.
+- **The backend stays `colleague`.** The reconciliation issue #1 asks for was
+  deferred rather than folded into a domain-code extraction — see
+  [Identity and the backend mismatch](#identity-and-the-backend-mismatch) for
+  the three-part move it still needs.
+
+Still genuinely open, and blocking the release rather than the implementation:
+whether a PyPI / TestPyPI **Trusted Publisher** is registered for this project
+(see [CI / release](#ci--release)) — unverifiable from the repo alone.
+
+## The `reachy-mini-cli` migration (next)
+
+`reachy-mini-cli` is the first consumer and the reason this repo exists. **This
+package's side is done** — the engine, the store, the extras and
+`build_face_recognition()` in the call shape `face_sense.py` already uses are
+all on disk. Two steps remain, in this order: **publish a usable release**
+(task `t12`), then **open the cross-repo issue** (`t13`).
+
+Reachy's side, for that issue: delete `reachy/vision/face.py` + `face_store.py`,
+depend on this package, rewire `reachy/behavior/face_sense.py`
+(`build_face_recognition`) and the `[vision]` extra, and keep already-enrolled
+faces under its `state_dir()/faces` working by passing that path as
+`store_base_dir=`. The `webcam-cli` single-still feeder gap belongs in the same
+conversation.
 
 **Do not push changes into `reachy-mini-cli` yourself.** Open an issue on that
 repo (the `communicate` skill does cross-repo issues), agree the API and the
@@ -339,10 +478,11 @@ is registered for `face-recognition-cli` and the `pypi` / `testpypi` GitHub
 environments exist — `guild create` configures the GitHub side only. This has
 not been confirmed yet.
 
-Note that `CHANGELOG.md` currently carries the **template's** history (up to
-0.6.1), inherited by the scaffold — entries below the first
-`face-recognition-cli` release describe `culture-agent-template`, not this
-agent.
+Note that `CHANGELOG.md` entries at **0.6.1 and below** are the
+`culture-agent-template` history inherited by the scaffold, not this agent's;
+`0.7.0` is the first entry that describes `face-recognition-cli` itself. The
+engine extraction has not been released yet — `t12` is the version bump and
+changelog entry that covers it.
 
 ## Skills (`.claude/skills/`)
 
@@ -409,5 +549,6 @@ The ones you will actually reach for here: `cicd` (PRs + SonarCloud gating),
 
 This file describes the repository **as it exists on disk today**, with planned
 work explicitly marked. When you edit it, keep claims grounded in checked-in
-reality; if a section drifts ahead of reality, mark it `(planned)` or move it
-under [The domain work](#the-domain-work-planned).
+reality; if a section drifts ahead of reality, mark it `(planned)` — and when a
+planned piece lands, move it into
+[The domain work](#the-domain-work-landed) and describe what is actually there.

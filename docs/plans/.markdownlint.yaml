@@ -1,0 +1,16 @@
+# Generated devague exports (`devague plan export`) render task text verbatim,
+# including `<placeholder>` angle-bracket notation that MD033 misreads as
+# inline HTML, on lines as long as the task. Hand-escaping would be
+# overwritten on the next export, so MD033 is relaxed for this
+# generated-artifact directory only (MD037: underscore-prefixed identifiers
+# in verbatim claim text read as emphasis markers).
+#
+# markdownlint-cli2 applies the NEAREST config wholesale (no cascade merge),
+# so the root .markdownlint-cli2.yaml rule choices are restated here.
+default: true
+MD013: false
+MD060: false
+MD024:
+  siblings_only: true
+MD033: false
+MD037: false

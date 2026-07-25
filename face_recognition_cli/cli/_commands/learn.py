@@ -12,23 +12,42 @@ from face_recognition_cli import __version__
 from face_recognition_cli.cli._output import emit_result
 
 _TEXT = """\
-face-recognition-cli — a clonable template for AgentCulture mesh agents.
+face-recognition-cli — face identity for the AgentCulture mesh.
 
 Purpose
 -------
-Scaffold for a new Culture mesh agent: an agent-first CLI (cited from the teken
-`python-cli` reference), an identity (culture.yaml + CLAUDE.md), the canonical
-guildmaster skill kit under .claude/skills/, and a deploy/CI baseline. Clone it,
-rename the package, and edit culture.yaml to mint a new agent.
+Detect the face in an image, enroll it under a human name, match a new face
+against what is already enrolled, and manage those identities. Embeddings come
+from OpenCV's YuNet detector + SFace 128-dim embedder (the [cpu] / [gpu]
+extras); identities live in a local per-consumer bank on disk. Nothing leaves
+the machine — the only network access is the one-time model download.
 
-Commands
---------
+This tool owns no camera and opens no device: feed it an image path, or encoded
+image bytes on stdin (--image -), and it interprets the frame.
+
+Face commands
+-------------
+  face-recognition-cli enroll --name N --image P  File a face under a name.
+  face-recognition-cli match --image P            Who is this? No match = exit 0.
+  face-recognition-cli list                       Identities enrolled in a bank.
+  face-recognition-cli forget <id>                Delete one identity.
+  face-recognition-cli forget-all [--apply]       Wipe a bank (dry-run default).
+
+Introspection commands
+----------------------
   face-recognition-cli whoami             Identity from culture.yaml.
   face-recognition-cli learn              This self-teaching prompt.
   face-recognition-cli explain <path>...  Markdown docs for any noun/verb path.
   face-recognition-cli overview           Descriptive snapshot of the agent.
   face-recognition-cli doctor             Check the agent-identity invariants.
   face-recognition-cli cli overview       Describe the CLI surface itself.
+
+Face banks
+----------
+Every store-touching verb takes --bank <name>. Identities are partitioned per
+consumer: one enrolled in a given bank is invisible to list/match/forget run
+against another. Default: $FACE_RECOGNITION_BANK, else 'default'.
+  face-recognition-cli explain banks
 
 Machine-readable output
 -----------------------
@@ -38,8 +57,8 @@ Every command supports --json. Errors in JSON mode emit
 Exit-code policy
 ----------------
   0 success
-  1 user-input error (bad flag, bad path, missing arg)
-  2 environment / setup error
+  1 user-input error (bad flag, bad path, missing arg, no face in the frame)
+  2 environment / setup error (notably: the [cpu] extra is not installed)
   3+ reserved
 
 More detail
@@ -52,8 +71,19 @@ def _as_json_payload() -> dict[str, object]:
     return {
         "tool": "face-recognition-cli",
         "version": __version__,
-        "purpose": "Clonable scaffold for a new AgentCulture mesh agent.",
+        "purpose": (
+            "Face identity: detect the face in an image, enroll it under a name, "
+            "match it against a bank, and manage the stored identities."
+        ),
         "commands": [
+            {"path": ["enroll"], "summary": "File a face under a name; prints its id."},
+            {"path": ["match"], "summary": "Identify a face; a no-match exits 0."},
+            {"path": ["list"], "summary": "Inventory of the identities in a bank."},
+            {"path": ["forget"], "summary": "Delete one identity by id."},
+            {
+                "path": ["forget-all"],
+                "summary": "Delete every identity in a bank (dry-run; --apply commits).",
+            },
             {"path": ["whoami"], "summary": "Identity probe from culture.yaml."},
             {"path": ["learn"], "summary": "Self-teaching prompt."},
             {"path": ["explain"], "summary": "Markdown docs by path."},
